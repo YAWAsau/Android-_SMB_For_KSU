@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/30310972/README.md)
 # Android SMB Server WebUI
 
 在已取得 Root 權限的 Android 裝置上執行 Samba `smbd`，並透過模組 WebUI 管理 SMB 分享、認證、協議、網路介面與日誌。
