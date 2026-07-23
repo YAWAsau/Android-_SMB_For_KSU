@@ -1,0 +1,7 @@
+id=smbdwebui
+name=Android SMB Server WebUI
+version=v0.3.11-remove-mt-compat-20260715
+versionCode=41
+author=Github@YAWAsau
+minMagisk=26402
+description=狀態：已停止｜分享：/sdcard/SpeedBackup｜名稱：SpeedBackup｜模式：Guest匿名

@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Android SMB Server</title>
+    <script>
+    (function () {
+        try {
+            var theme = localStorage.getItem("smbdwebui_theme") || "auto";
+            if (theme !== "auto") document.documentElement.setAttribute("data-theme", theme);
+        } catch (e) {}
+    })();
+    </script>
+    <link rel="stylesheet" href="./assets/style.css">
+</head>
+<body class="stopped">
+    <div id="toast-container" class="toast-wrap"></div>
+
+    <div class="status-line" id="status-container">
+        <span class="dot"></span>
+        <span id="status-text" style="font-weight: 700; font-size: 14px;">檢測中...</span>
+        <span id="pid-badge" class="hidden" style="font-family: monospace; font-size: 11px; padding: 1px 6px; background: var(--bdr2); border-radius: 4px; color: var(--t2);"></span>
+        <span style="flex:1"></span>
+        <span id="smb-version" style="font-family: monospace; font-size: 11px; color: var(--t3)">v...</span>
+    </div>
+
+    <div class="btn-row">
+        <button class="btn btn-primary" id="btn-start"><span data-i18n="btnStart">啟動服務</span></button>
+        <button class="btn btn-danger" id="btn-stop"><span data-i18n="btnStop">停止服務</span></button>
+    </div>
+
+    <button class="btn btn-secondary" id="btn-restart" style="width:100%; margin-bottom:15px; padding:12px;">
+        <span data-i18n="btnRestart">重啟 SMB 服務</span>
+    </button>
+
+    <div class="tab-btn-row">
+        <button class="tab-btn active" data-tab="status"> <span data-i18n="tabStatus">目前狀態</span></button>
+        <button class="tab-btn" data-tab="settings"> <span data-i18n="tabSettings">基本設定</span></button>
+        <button class="tab-btn" data-tab="logs"> <span data-i18n="tabLogs">查看日誌</span></button>
+        <button class="tab-btn" data-tab="tools"> <span data-i18n="tabTools">維護中心</span></button>
+    </div>
+
+    <div id="tab-status" class="tab-content active">
+        <div class="card">
+            <h3 data-i18n="statusTitle">SMB 分享狀態</h3>
+            <div class="kv"><b data-i18n="sharePath">分享路徑</b><span id="st-share-path" class="mono">-</span></div>
+            <div class="kv"><b data-i18n="shareName">分享名稱</b><span id="st-share-name" class="mono">-</span></div>
+            <div class="kv"><b data-i18n="address">連線位址</b><span id="st-addresses" class="mono">-</span></div>
+            <div class="kv"><b data-i18n="access">讀寫權限</b><span id="st-access">-</span></div>
+            <div class="kv"><b data-i18n="protocol">SMB 協議</b><span id="st-protocol" class="mono">-</span></div>
+            <div class="kv"><b data-i18n="interfaces">綁定介面</b><span id="st-interfaces" class="mono">-</span></div>
+            <div class="kv"><b data-i18n="authMode">認證模式</b><span id="st-auth-mode">-</span></div>
+            <div class="kv" id="st-username-row"><b data-i18n="username">SMB 使用者名稱</b><span id="st-smb-username" class="mono">-</span></div>
+            <div class="kv" id="st-password-row"><b data-i18n="passwordStatusLabel">密碼狀態</b><span id="st-password-status">-</span></div>
+        </div>
+
+        <div class="card">
+            <h3 data-i18n="appearanceTitle">外觀</h3>
+            <div class="setting-sub" style="margin-bottom:8px;" data-i18n="themeTitle">主題</div>
+            <div class="theme-grid" style="margin-bottom:0">
+                <button class="btn btn-secondary" data-theme-btn="auto"><span data-i18n="themeAuto">跟隨系統</span></button>
+                <button class="btn btn-secondary" data-theme-btn="light"><span data-i18n="themeLight">白色</span></button>
+                <button class="btn btn-secondary" data-theme-btn="dark"><span data-i18n="themeDark">黑色</span></button>
+                <button class="btn btn-secondary" data-theme-btn="oled"><span data-i18n="themeOled">OLED 黑</span></button>
+            </div>
+            <div class="setting-sub" style="margin:12px 0 8px;" data-i18n="languageTitle">語言</div>
+            <select class="input" id="language-select" aria-label="Language">
+                <option value="zh-Hant">繁體中文</option>
+                <option value="zh-Hans">简体中文</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="tab-settings" class="tab-content">
+        <div class="card live-apply-card">
+            <div class="setting-title" data-i18n="liveApplyTitle">即時套用</div>
+            <div class="setting-sub" data-i18n="liveApplyDesc">所有設定會自動保存；服務執行中時，必要設定會自動重啟套用。</div>
+            <div id="live-apply-state" class="small" style="margin-top:8px;"></div>
+        </div>
+        <div class="card">
+            <h3 data-i18n="authSettings">認證設定</h3>
+            <div class="field">
+                <label data-i18n="authMode">認證模式</label>
+                <select class="input" id="conf-AUTH_MODE">
+                    <option value="guest" data-i18n="authGuest">Guest / 匿名</option>
+                    <option value="user" data-i18n="authUser">使用者名稱 / 密碼</option>
+                </select>
+            </div>
+            <div class="field">
+                <label data-i18n="username">SMB 使用者名稱</label>
+                <input class="input" id="conf-SMB_USERNAME" autocomplete="username" maxlength="32" placeholder="speedbackup">
+                <div class="small" data-i18n="usernameHint">僅限英數字、點、底線與連字號，最長 32 字元。</div>
+            </div>
+            <div class="field">
+                <label data-i18n="password">SMB 密碼</label>
+                <input class="input" id="auth-password" type="password" autocomplete="new-password" maxlength="256" data-i18n-placeholder="passwordPlaceholder" placeholder="輸入新密碼後離開欄位即時套用">
+                <div id="password-status" class="small" style="margin-top:6px;"></div>
+                <div class="small" data-i18n="passwordMaskHint">已設定時顯示固定遮罩；模組只保存 NT 雜湊，無法讀回原始密碼。</div>
+            </div>
+            <div class="small warn" data-i18n="authHint">帳密模式會停用 Guest，適合其他手機或 Windows 連線；密碼只保存 NT 雜湊，不寫入 config.conf。</div>
+        </div>
+
+        <div class="card">
+            <h3 data-i18n="shareSettings">分享設定</h3>
+            <div class="field">
+                <label data-i18n="sharePath">分享路徑</label>
+                <input class="input" id="conf-SHARE_PATH" placeholder="/sdcard/SpeedBackup">
+            </div>
+            <div class="field">
+                <label data-i18n="shareName">分享名稱</label>
+                <input class="input" id="conf-SHARE_NAME" placeholder="SpeedBackup">
+            </div>
+            <div class="setting-row">
+                <div class="setting-main">
+                    <div>
+                        <div class="setting-title" data-i18n="readOnly">唯讀分享</div>
+                        <div class="setting-sub" data-i18n="readOnlyDesc">開啟後客戶端只能讀取，不能寫入或刪除。</div>
+                    </div>
+                    <label class="toggle"><input type="checkbox" id="conf-READ_ONLY"><span class="slider"></span></label>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-main">
+                    <div>
+                        <div class="setting-title" data-i18n="autoStart">開機自動啟動</div>
+                        <div class="setting-sub" data-i18n="autoStartDesc">開機後自動啟動 smbd。</div>
+                    </div>
+                    <label class="toggle"><input type="checkbox" id="conf-AUTO_START"><span class="slider"></span></label>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 data-i18n="protocolInterface">協議與介面</h3>
+            <div class="grid2">
+                <div class="field">
+                    <label data-i18n="minProtocol">最低 SMB 協議</label>
+                    <select class="input" id="conf-MIN_PROTOCOL">
+                        <option>SMB2_02</option><option>SMB2_10</option><option>SMB3</option><option>SMB3_00</option><option>SMB3_02</option><option>SMB3_10</option><option>SMB3_11</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label data-i18n="maxProtocol">最高 SMB 協議</label>
+                    <select class="input" id="conf-MAX_PROTOCOL">
+                        <option>SMB3</option><option>SMB3_11</option><option>SMB3_10</option><option>SMB3_02</option><option>SMB3_00</option><option>SMB2_10</option><option>SMB2_02</option>
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label>Port</label>
+                <input class="input" id="conf-PORT" inputmode="numeric" placeholder="445">
+            </div>
+            <div class="setting-row">
+                <div class="setting-main">
+                    <div>
+                        <div class="setting-title" data-i18n="autoInterfaces">自動加入目前 IPv4</div>
+                        <div class="setting-sub" data-i18n="autoInterfacesDesc">自動偵測 Wi‑Fi / 行動網路 IP 並加入 interfaces。</div>
+                    </div>
+                    <label class="toggle"><input type="checkbox" id="conf-INTERFACES_AUTO"><span class="slider"></span></label>
+                </div>
+            </div>
+            <div class="setting-row">
+                <div class="setting-main">
+                    <div>
+                        <div class="setting-title" data-i18n="bindInterfaces">只綁定指定介面</div>
+                        <div class="setting-sub" data-i18n="bindInterfacesDesc">通常建議開啟；若連線異常可關閉。</div>
+                    </div>
+                    <label class="toggle"><input type="checkbox" id="conf-BIND_INTERFACES"><span class="slider"></span></label>
+                </div>
+            </div>
+            <div class="field">
+                <label data-i18n="extraInterfaces">額外 interfaces / CIDR</label>
+                <input class="input" id="conf-EXTRA_INTERFACES" placeholder="例如 192.168.0.10/24，可留空">
+            </div>
+            <div class="grid2">
+                <div class="field">
+                    <label>NetBIOS</label>
+                    <input class="input" id="conf-NETBIOS_NAME" placeholder="ANDROIDSMB">
+                </div>
+                <div class="field">
+                    <label>Workgroup</label>
+                    <input class="input" id="conf-WORKGROUP" placeholder="WORKGROUP">
+                </div>
+            </div>
+            <div class="small" data-i18n="protocolHint">帳密模式建議使用 SMB2_02～SMB3_11；若舊客戶端不相容，可降低最高協議。</div>
+        </div>
+    </div>
+
+    <div id="tab-logs" class="tab-content">
+        <div class="card">
+            <h3 data-i18n="logsConf">日誌 / 設定檔</h3>
+            <div class="btn-row">
+                <button class="btn btn-secondary" id="btn-log"> <span data-i18n="readLog">讀取日誌</span></button>
+                <button class="btn btn-secondary" id="btn-conf"> <span data-i18n="viewConf">查看 smb.conf</span></button>
+            </div>
+            <pre id="log-content" data-i18n="waiting">等待操作...</pre>
+        </div>
+    </div>
+
+    <div id="tab-tools" class="tab-content">
+        <div class="card">
+            <h3> <span data-i18n="tabTools">維護中心</span></h3>
+            <div class="btn-row">
+                <button class="btn btn-secondary" id="btn-status-text"> <span data-i18n="textStatus">文字狀態</span></button>
+                <button class="btn btn-secondary" id="btn-refresh-card"> <span data-i18n="refreshCard">刷新模組卡片</span></button>
+            </div>
+            <button class="btn btn-warn" id="btn-force-stop" style="width:100%; margin-bottom:12px;"> <span data-i18n="forceStop">強制停止 smbd</span></button>
+            <div class="small" data-i18n="cacheHint">若模組卡片沒有立刻更新，返回模組列表再進入通常會刷新。</div>
+        </div>
+    </div>
+
+    <script src="./assets/index.js"></script>
+</body>
+</html>
