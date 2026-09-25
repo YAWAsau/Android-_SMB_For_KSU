@@ -432,32 +432,6 @@ winreg 唯讀查詢及停止／啟動重連。報告只對所記錄 SHA256 的�
 MT 另完成跨手機匿名連線與文字檔讀取測試。尚未驗證所有 Android 版本、Kerberos／AD、
 強制 SMB 加密模式或大檔效能；成功編譯不等於新版已通過上述所有功能測試。
 
-## 開源檔案與模組打包
-
-Release ZIP 內含可執行檔，但公開原始碼倉庫應同時提供：
-
-- `netwatch` 原始碼及 NDK 建置腳本
-- `propwait` 原始碼及 NDK 建置腳本
-- `ntlmhash` 原始碼及建置腳本
-- `smbnotify.dex` 的 Java／Kotlin 原始碼及 Dex 建置流程
-- Android 版 Samba 的修改內容、完整建置參數及可重現建置說明
-- 產生 release ZIP 與 `sha256sum.txt` 的打包腳本
-
-建議的倉庫結構：
-
-```text
-module/                 模組腳本與 WebUI
-src/netwatch/           netwatch 原始碼
-src/propwait/           propwait 原始碼
-src/ntlmhash/           ntlmhash 原始碼
-src/smbnotify/          通知 Dex 原始碼
-third_party/            第三方授權與 patch
-build/                  建置腳本
-release/                打包及 checksum 腳本
-```
-
-不要只公開 release ZIP 中的已編譯 binary。可重現建置、對應原始碼與第三方授權文字，是讓使用者能審核 Root daemon 的必要條件。
-
 ## 授權與第三方元件
 
 本模組包含 Samba 4.25.0 的 `smbd` 與 RPC 輔助程式。Samba 專案使用 GPLv3-or-later／LGPLv3-or-later 授權，實際適用條款依元件而定。散布編譯後的 Samba binary 時，應一併提供對應原始碼、修改內容、建置方式及必要授權文字。
