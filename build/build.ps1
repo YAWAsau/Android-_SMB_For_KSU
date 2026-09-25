@@ -1,4 +1,4 @@
-﻿param(
+param(
     [string]$DeviceSerial,
     [switch]$Clean,
     [ValidateSet('standard','size')][string]$BuildProfile = 'size',
@@ -15,27 +15,27 @@ $env:PYTHONUTF8 = '1'
 $env:LC_ALL = 'C.UTF-8'
 $Repo = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Cache = Join-Path $env:USERPROFILE 'SambaAndroidBuild'
-$Work = Join-Path $Cache 'work-r29-api28'
+$Work = Join-Path $Cache 'work-r30-api28-ident-v1'
 $Tool = Join-Path $Cache 'toolchain'
-$NdkZip = Join-Path $Cache 'android-ndk-r29-windows.zip'
-$Ndk = Join-Path $Tool 'android-ndk-r29'
+$NdkZip = Join-Path $Cache 'android-ndk-r30-windows.zip'
+$Ndk = Join-Path $Tool 'android-ndk-r30'
 $SourceRoot = Join-Path $Work 'src'
 $DepsRoot = Join-Path $Cache 'deps'
-$DepsSource = Join-Path $DepsRoot 'src-r29-api28'
+$DepsSource = Join-Path $DepsRoot 'src-r30-api28'
 $PerlDependencyArchive = Join-Path $DepsRoot 'Parse-Yapp-1.21.tar.gz'
 $PerlDependencyRoot = Join-Path $DepsRoot 'perl'
 $PerlYappLib = Join-Path $PerlDependencyRoot 'Parse-Yapp-1.21\lib'
-$Prefix = Join-Path $Cache 'android-prefix-r29-api28'
+$Prefix = Join-Path $Cache 'android-prefix-r30-api28'
 $OutDir = Join-Path $Repo 'dist\android-arm64'
 if ($BuildProfile -eq 'size') {
-    $Work = Join-Path $Cache 'work-r29-api28-size'
+    $Work = Join-Path $Cache 'work-r30-api28-size-ident-v1'
     $SourceRoot = Join-Path $Work 'src'
     $OutDir = Join-Path $Repo 'dist\android-arm64-size'
 }
 $Adb = 'C:\platform-tools\adb.exe'
 $MsysBash = 'C:\msys64\usr\bin\bash.exe'
 $Gpg = 'C:\Program Files\Git\usr\bin\gpg.exe'
-$ExpectedNdkSha1 = 'ab3bb30fbb9e6903666d60c55d11e78b04e07472'
+$ExpectedNdkSha1 = '9bf167a1985fa7d4a036186b78f702eab9179408'
 $SambaSigningFingerprint = '81F5E2832BD2545A1897B713AA99442FB680B620'
 
 function Invoke-Checked([string]$Exe, [string[]]$Arguments) {
@@ -83,11 +83,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if (-not (Test-Path $Ndk)) {
-    Write-Host '[2/6] Downloading Android NDK r29 (first run only)...'
+    Write-Host '[2/6] Downloading Android NDK r30 (first run only)...'
     if (-not (Test-Path $NdkZip)) {
-        $Seed = Join-Path $Repo '.build\android-ndk-r29-windows.zip'
+        $Seed = Join-Path $Repo '.build\android-ndk-r30-windows.zip'
         if (Test-Path $Seed) { Copy-Item -LiteralPath $Seed -Destination $NdkZip }
-        else { Invoke-WebRequest -UseBasicParsing 'https://dl.google.com/android/repository/android-ndk-r29-windows.zip' -OutFile $NdkZip }
+        else { Invoke-WebRequest -UseBasicParsing 'https://dl.google.com/android/repository/android-ndk-r30-windows.zip' -OutFile $NdkZip }
     }
     $NdkSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $NdkZip).Hash.ToLowerInvariant()
     if ($NdkSha1 -ne $ExpectedNdkSha1) { throw "NDK SHA1 mismatch: $NdkSha1" }
@@ -96,8 +96,8 @@ if (-not (Test-Path $Ndk)) {
 $Clang = Join-Path $Ndk 'toolchains\llvm\prebuilt\windows-x86_64\bin\clang.exe'
 if (-not (Test-Path $Clang)) { throw "NDK compiler not found: $Clang" }
 $NdkProperties = Get-Content -Raw -LiteralPath (Join-Path $Ndk 'source.properties')
-if ($NdkProperties -notmatch 'Pkg.Revision\s*=\s*29\.0\.14206865') {
-    throw 'The selected NDK is not the pinned r29 release (29.0.14206865).'
+if ($NdkProperties -notmatch 'Pkg.Revision\s*=\s*30\.0\.16248370') {
+    throw 'The selected NDK is not the pinned r30 release (30.0.16248370).'
 }
 
 Write-Host '[3/6] Discovering the newest official Samba stable release...'
@@ -247,7 +247,7 @@ $RepoPosix = (ConvertTo-MsysPath $Repo)
 $CachePosix = (ConvertTo-MsysPath $Cache)
 $ShellScript = Join-Path $Repo 'tools\samba_android\build-samba.sh'
 $Runner = Join-Path $Repo 'tools\samba_android\adb-runner.sh'
-$AnswerFile = Join-Path $Cache "cross-answers-$Version-r29-api28.txt"
+$AnswerFile = Join-Path $Cache "cross-answers-$Version-r30-api28.txt"
 # Bionic/Linux provides POSIX fcntl record locks. Samba's configure source
 # probe hits a Waf gccdeps path-index issue on Windows when including ../tests.
 $FcntlLockAnswer = 'Checking whether fcntl locking is available: OK'
@@ -263,6 +263,7 @@ $BashEnv = @{
     SAMBA_PREFIX = (ConvertTo-MsysPath $Prefix)
     SAMBA_REPO = $RepoPosix
     SAMBA_NDK = (ConvertTo-MsysPath $Ndk)
+    SAMBA_STATIC_CRT = (ConvertTo-MsysPath (Join-Path $Cache 'crt-r30-api28-ident-v1'))
     SAMBA_HOST_TOOL = (ConvertTo-MsysPath (Join-Path $Tool 'ucrt64'))
     SAMBA_ADB = (ConvertTo-MsysPath $Adb)
     SAMBA_DEVICE = $DeviceSerial
@@ -277,9 +278,11 @@ $BashEnv = @{
 $EnvPrefix = ($BashEnv.GetEnumerator() | ForEach-Object { "export $($_.Key)='$($_.Value.Replace("'", "'\''"))'" }) -join '; '
 $CryptoPosix = (ConvertTo-MsysPath $CryptoScript)
 $ShellScriptPosix = (ConvertTo-MsysPath $ShellScript)
-$Command = "set -e; $EnvPrefix; bash '$CryptoPosix'; bash '$ShellScriptPosix'"
+$CrtScriptPosix = (ConvertTo-MsysPath (Join-Path $Repo 'tools\samba_android\prepare-static-crt.py'))
+$Command = "set -e; $EnvPrefix; python3 '$CrtScriptPosix'; bash '$CryptoPosix'; bash '$ShellScriptPosix'"
 Invoke-Checked $MsysBash @('-lc',$Command)
-$BuildMetadata = @{ ndk = 'r29'; ndk_revision = '29.0.14206865'; android_api = 28; target = 'aarch64-linux-android28'; samba_version = $Version; build_profile = $BuildProfile; build_scope = $BuildScope }
+$BuildMetadata = @{ ndk = 'r30'; ndk_revision = '30.0.16248370'; android_api = 28; target = 'aarch64-linux-android28'; samba_version = $Version; build_profile = $BuildProfile; build_scope = $BuildScope }
+$BuildMetadata.android_ident = 'target-api28-ndkr30; private CRT note override; runtime unchanged'
 if ($BuildProfile -eq 'size') {
     $BuildMetadata.samba_cflags = '-Os -fPIE -ffunction-sections -fdata-sections -flto=thin'
     $BuildMetadata.crypto_cflags = '-O2 -fPIC'

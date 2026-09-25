@@ -15,7 +15,7 @@ release; an unchanged release reuses verified cached sources and build outputs.
 If that query fails, the script warns and selects the newest cached source; it
 does not claim that cached version is current. It does not update in the background.
 The version in this ZIP's filename identifies the included prebuilt binaries,
-not a version pin for subsequent builds. NDK r29, API 28, GMP/Nettle/GnuTLS and
+not a version pin for subsequent builds. NDK r30, API 28, GMP/Nettle/GnuTLS and
 Parse::Yapp remain pinned by build.ps1. Future upstream changes may require
 updating the Android patches; release discovery is not a guarantee of build success.
 
@@ -36,8 +36,8 @@ The build only produces ELF binaries and build metadata. This kit contains no fl
 The server RPC helper directory is compiled as `/data/adb/modules/smbdwebui/bin` and its default log directory is `/data/adb/smbdwebui/runtime/log`. Your module must provide these paths or appropriate supported overrides. Replacing binaries alone does not update module shell scripts.
 
 The first run prepares MSYS2/NDK and source dependencies. Build cache lives at
-`%USERPROFILE%/SambaAndroidBuild`; the `work-r29-api28`, `deps/src-r29-api28`
-and `android-prefix-r29-api28` subdirectories isolate all target objects and
+`%USERPROFILE%/SambaAndroidBuild`; the `work-r30-api28-ident-v1`, `deps/src-r30-api28`
+and `android-prefix-r30-api28` subdirectories isolate all target objects and
 static dependencies from earlier toolchains. No S: drive mapping is needed. Chinese paths
 are supported. `-Clean` rebuilds the selected source tree. An upstream release
 that changes patch anchors stops with an explicit error instead of silently
@@ -52,9 +52,9 @@ signature fingerprints are in `build.ps1`.
 
 The default is `-BuildProfile size -BuildScope all`, optimizing all six Samba
 executables. For the client only, run `./build.ps1 -BuildScope client` (the size
-client ZIP selects client scope by default, so `./build.ps1` is sufficient there).
+legacy client ZIP may use an older default; the unified script defaults to all).
 It builds Samba with `-Os -ffunction-sections -fdata-sections -flto=thin` in the
-separate `work-r29-api28-size` cache and writes `dist/android-arm64-size`.
+separate `work-r30-api28-size-ident-v1` cache and writes `dist/android-arm64-size`.
 Crypto archives retain their original `-O2` flags; the Samba source is rebuilt
 with ThinLTO. No protocol or authentication feature is explicitly disabled by
 this profile. Both scopes only produce binaries; neither packages or flashes a module.
@@ -62,7 +62,7 @@ Use `-BuildProfile standard` for the previous `-O2` configuration and
 `dist/android-arm64` output. The original module's non-Samba helper binaries
 (`netwatch`, `propwait`, `ntlmhash`) are preserved; they are not Samba build targets.
 
-This package targets ARM64 Android using API 28 and NDK r29. Runtime verification was on the
+This build script targets ARM64 Android using API 28 and NDK r30 (30.0.16248370). NDK r30 outputs have not yet been built or runtime-tested. Historical r29 runtime verification was on the
 Xiaomi 13 spare phone running Android 17; other Android versions/root systems
 have not been runtime-tested. LAN guards and service lifecycle are managed by your separately maintained module.
 `build-metadata.json` records the compiler target and pinned NDK revision.
@@ -81,3 +81,9 @@ Samba source: https://download.samba.org/pub/samba/stable/
 Samba is GPLv3-or-later; the complete upstream source archive plus these patch
 scripts are needed to reproduce these modified binaries. Dependency licenses
 must also accompany redistribution.
+
+The installed NDK is reused from `%USERPROFILE%/SambaAndroidBuild/toolchain/android-ndk-r30`. Its exact revision is checked. If absent, the official Windows archive is downloaded and its pinned SHA1 is verified.
+
+## Static ELF identification with r30
+
+NDK r30 ships a common static CRT identifying Android 37 without an NDK version. The build creates a private copy and replaces only its .note.android.ident section with the official API 28 / r30 / 16248370 note from the dynamic CRT. Static links select this copy using Clang -B; no dynamic CRT code is linked and the installed NDK stays unchanged. This is an identification override, not a runtime compatibility fix. The r30 static libc remains in use. Android 9 compatibility is unverified. Build metadata records the override. The new ident-v1 Samba work directory forces existing builds to relink; crypto archives are reusable.

@@ -5,6 +5,10 @@ if [ -n "${SAMBA_PREFIX:-}" ]; then extra+=("-I$SAMBA_PREFIX/include"); fi
 all_args="$*"
 case " $all_args " in
   *' -static '*)
+    # Use a private static CRT with the configured target/NDK identification.
+    # -B changes CRT lookup without replacing any NDK runtime code.
+    : "${SAMBA_STATIC_CRT:?Run build.ps1 to prepare the static CRT}"
+    extra+=("-B$(cygpath -m "$SAMBA_STATIC_CRT")/")
     filtered=()
     for arg in "$@"; do
       case "$arg" in

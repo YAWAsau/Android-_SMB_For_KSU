@@ -13,6 +13,11 @@ if profile == 'size':
     suffix = 'logfix3-lto'
 cache = Path(os.environ['USERPROFILE']) / 'SambaAndroidBuild'
 version = (out / 'source-version.txt').read_text().strip()
+metadata = json.loads((out / 'build-metadata.json').read_text(encoding='utf-8'))
+if (metadata.get('ndk') != 'r30' or metadata.get('ndk_revision') != '30.0.16248370'
+        or metadata.get('android_api') != 28 or metadata.get('build_scope') != 'all'
+        or metadata.get('build_profile') != profile or metadata.get('samba_version') != version):
+    raise SystemExit('Build all binaries with the current NDK r30 script before packaging this kit.')
 names = ['smbclient', 'smbd', 'samba-dcerpcd', 'rpcd_classic', 'rpcd_lsad', 'rpcd_winreg']
 hashes = {n: hashlib.sha256((out/n).read_bytes()).hexdigest() for n in names}
 server = json.loads((out/'server-functional-test-report.json').read_text(encoding='utf-8'))
@@ -24,13 +29,13 @@ archives = [cache / f'samba-{version}.tar.gz']
 for name in ('gmp-6.3.0.tar.xz', 'nettle-3.10.2.tar.gz', 'gnutls-3.8.13.tar.xz', 'Parse-Yapp-1.21.tar.gz'):
     matches = [cache/name, cache/'deps'/name]
     archives.append(next(p for p in matches if p.exists()))
-manifest = {'samba_version': version, 'ndk': 'r29', 'android_api': 28, 'abi': 'arm64-v8a',
+manifest = {'samba_version': version, 'ndk': metadata['ndk'], 'ndk_revision': metadata['ndk_revision'], 'android_api': 28, 'abi': 'arm64-v8a',
             'build_profile': profile,
             'linkage': 'fully static; no PT_INTERP or DT_NEEDED', 'binary_sha256': hashes,
             'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in archives}}
 (out/'source-manifest.json').write_text(json.dumps(manifest, indent=2)+'\n', encoding='utf-8')
 (out/'README.md').write_bytes((root/'tools/samba_android/SERVER-BUILD.md').read_bytes())
-target = root / f'dist/samba-{version}-android-arm64-ndkr29-api28-{suffix}-build-kit.zip'
+target = root / f'dist/samba-{version}-android-arm64-ndkr30-api28-{suffix}-build-kit.zip'
 with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
     z.write(root/'build.ps1', 'build.ps1')
     z.write(root/'tools/samba_android/SERVER-BUILD.md', 'README.md')
