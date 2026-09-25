@@ -120,6 +120,10 @@ log_install INFO PERMISSION "設定 staged 權限"
 ui_print "- Setting staged module permissions"
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/bin/smbd" 0 0 0755
+set_perm "$MODPATH/bin/samba-dcerpcd" 0 0 0755
+set_perm "$MODPATH/bin/rpcd_classic" 0 0 0755
+set_perm "$MODPATH/bin/rpcd_lsad" 0 0 0755
+set_perm "$MODPATH/bin/rpcd_winreg" 0 0 0755
 set_perm "$MODPATH/bin/ntlmhash" 0 0 0755
 set_perm "$MODPATH/bin/netwatch" 0 0 0755
 set_perm "$MODPATH/bin/propwait" 0 0 0755
@@ -146,6 +150,10 @@ if [ "$MODPATH" != "$LIVE_MODPATH" ]; then
 
   set_perm_recursive "$LIVE_MODPATH" 0 0 0755 0644
   set_perm "$LIVE_MODPATH/bin/smbd" 0 0 0755
+set_perm "$LIVE_MODPATH/bin/samba-dcerpcd" 0 0 0755
+set_perm "$LIVE_MODPATH/bin/rpcd_classic" 0 0 0755
+set_perm "$LIVE_MODPATH/bin/rpcd_lsad" 0 0 0755
+set_perm "$LIVE_MODPATH/bin/rpcd_winreg" 0 0 0755
   set_perm "$LIVE_MODPATH/bin/ntlmhash" 0 0 0755
   set_perm "$LIVE_MODPATH/bin/netwatch" 0 0 0755
   set_perm "$LIVE_MODPATH/bin/propwait" 0 0 0755
@@ -226,6 +234,7 @@ else
   ui_print "! Native netwatch missing; automatic LAN recovery unavailable"
 fi
 
+rm -f "$DATA_DIR/runtime/cache/smbd_version"
 log_install INFO INSTALL_DONE "安裝/熱更新完成"
 ui_print "- Done"
 ui_print "- Reopen the module page to use WebUI immediately"

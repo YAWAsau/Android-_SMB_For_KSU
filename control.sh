@@ -4,6 +4,8 @@ ID=smbdwebui
 DATA_DIR=/data/adb/smbdwebui
 CFG=$DATA_DIR/config.conf
 RUNTIME=$DATA_DIR/runtime
+TMPDIR=$RUNTIME/tmp
+export TMPDIR
 LOGDIR=$RUNTIME/log
 LOCKDIR=$RUNTIME/lock
 STATEDIR=$RUNTIME/state
@@ -368,20 +370,120 @@ auto_interfaces_key() {
 }
 
 interfaces_line() {
-  local out="127.0.0.1/8" i
+  local out="127.0.0.1/8" records i ifname cidr matched
+  # Fail closed on missing/zero/invalid masks; never emit a catch-all /0.
+  records=$(trusted_lan_ip4_records | awk '
+    NF >= 2 {
+      n=split($2, cidr, "/")
+      if (n == 2 && cidr[2] ~ /^[0-9]+$/ && cidr[2] >= 1 && cidr[2] <= 32) print
+    }')
   if [ "${INTERFACES_AUTO:-1}" = "1" ]; then
-    for i in $(trusted_lan_ip4_list); do
-      case "$i" in
-        127.*|0.*|'') ;;
-        *) out="$out $i" ;;
-      esac
+    for cidr in $(printf '%s\n' "$records" | awk 'NF >= 2 {print $2}'); do
+      case " $out " in *" $cidr "*) ;; *) out="$out $cidr" ;; esac
     done
   fi
-  if [ -n "$EXTRA_INTERFACES" ]; then
-    out="$out $EXTRA_INTERFACES"
-  fi
+  for i in $EXTRA_INTERFACES; do
+    matched=$(printf '%s\n' "$records" | awk -v requested="$i" '
+      BEGIN { split(requested, want, "/") }
+      NF >= 2 {
+        split($2, address, "/")
+        if (requested == $1 || want[1] == address[1]) print $2
+      }')
+    if [ -z "$matched" ]; then
+      if [ "${1:-}" = "report" ]; then
+        log_module WARN BIND_SKIP "忽略未配置於目前可信任 LAN 的額外綁定：$i"
+      fi
+      continue
+    fi
+    for cidr in $matched; do
+      case " $out " in *" $cidr "*) ;; *) out="$out $cidr" ;; esac
+    done
+  done
   printf '%s' "$out"
+  [ "$out" != "127.0.0.1/8" ]
 }
+
+smb_listener_ready() {
+  local listeners iface ip
+  is_running || return 1
+  listeners=$(ss -lnt 2>/dev/null) || return 1
+  if [ "${BIND_INTERFACES:-1}" != "1" ] && [ "${AUTO_START:-0}" != "1" ]; then
+    printf '%s\n' "$listeners" | awk -v p=":$PORT" '
+      $1 == "LISTEN" && ($4 == "0.0.0.0" p || $4 == "*" p || $4 == "[::]" p) {ok=1}
+      END {exit !ok}'
+    return $?
+  fi
+  iface=$(interfaces_line) || return 1
+  for ip in $iface; do
+    ip=${ip%%/*}
+    printf '%s\n' "$listeners" | awk -v endpoint="$ip:$PORT" '
+      $1 == "LISTEN" && $4 == endpoint {ok=1}
+      END {exit !ok}' || return 1
+  done
+}
+
+wait_smb_ready() {
+  local attempt=0 stable=0
+  # Require listening sockets to remain ready, not just a short-lived PID.
+  while [ "$attempt" -lt 25 ]; do
+    if smb_listener_ready; then
+      stable=$((stable + 1))
+      [ "$stable" -ge 5 ] && return 0
+    else
+      stable=0
+    fi
+    sleep 0.2
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+capture_start_failure() {
+  local reason="$1" now rest previous fingerprint stamp tmp helper
+  read -r now rest < /proc/uptime
+  now=${now%%.*}
+  fingerprint="$reason|$(cksum < "$CFG" 2>/dev/null)|$(auto_interfaces_key)"
+  stamp="$RUNTIME/auto_diagnostic.stamp"
+  previous=''
+  [ -f "$stamp" ] && read -r previous rest < "$stamp"
+  case "$previous" in ''|*[!0-9]*) previous=0 ;; esac
+  if [ "$fingerprint" = "${rest:-}" ] && [ "$now" -ge "$previous" ] &&
+     [ $((now - previous)) -lt 60 ]; then return 0; fi
+  umask 077
+  printf '%s %s\n' "$now" "$fingerprint" > "$stamp"
+  tmp="$LOGDIR/.auto_failure.$$"
+  {
+    printf 'reason=%s uptime=%s port=%s auth=%s\n' "$reason" "$now" "$PORT" "$AUTH_MODE"
+    printf 'requested_extra=%s\neffective_interfaces=%s\n' "$EXTRA_INTERFACES" "$(interfaces_line)"
+    ip -o -4 addr show 2>/dev/null
+    ss -lnt 2>/dev/null
+    for helper in smbd samba-dcerpcd rpcd_classic rpcd_lsad rpcd_winreg; do
+      ls -l "$MODDIR/bin/$helper" 2>&1
+    done
+    for helper in log.smbd smbd.stderr.log log.samba-dcerpcd log.rpcd_classic log.rpcd_lsad log.rpcd_winreg; do
+      printf '\n--- %s ---\n' "$helper"
+      tail -n 25 "$LOGDIR/$helper" 2>/dev/null
+    done
+  } | head -c 65536 > "$tmp"
+  [ -f "$LOGDIR/auto_failure.log" ] && mv -f "$LOGDIR/auto_failure.log" "$LOGDIR/auto_failure.previous.log"
+  mv -f "$tmp" "$LOGDIR/auto_failure.log"
+  log_module ERROR AUTO_DIAG "失敗診斷已保存：$LOGDIR/auto_failure.log；reason=$reason"
+}
+
+require_server_tools() {
+  local helper missing=0
+  for helper in smbd samba-dcerpcd rpcd_classic rpcd_lsad rpcd_winreg; do
+    if [ ! -x "$MODDIR/bin/$helper" ]; then
+      log_module ERROR BINARY_MISSING "缺少程式或執行權限：$helper"
+      missing=1
+    fi
+  done
+  command -v ss >/dev/null 2>&1 || missing=1
+  [ "$missing" = 0 ] && return 0
+  capture_start_failure required_tools
+  return 1
+}
+
 
 network_diagnostic() {
   local ifname cidr reason watcher_pid native_pid watcher_cmd native_exe native_version
@@ -450,8 +552,8 @@ network_diagnostic() {
 }
 
 make_dirs() {
-  mkdir -p "$RUNTIME" "$LOGDIR" "$STATEDIR" "$CACHEDIR" "$PRIVATEDIR" "$PIDDIR" "$SHARE_PATH" 2>/dev/null
-  chmod 700 "$DATA_DIR" "$RUNTIME" "$PRIVATEDIR" 2>/dev/null
+  mkdir -p "$TMPDIR" "$RUNTIME" "$LOGDIR" "$STATEDIR" "$CACHEDIR" "$PRIVATEDIR" "$PIDDIR" "$SHARE_PATH" 2>/dev/null
+  chmod 700 "$TMPDIR" "$DATA_DIR" "$RUNTIME" "$PRIVATEDIR" 2>/dev/null
   chmod 600 "$PASSDB" "$USERMAP" 2>/dev/null
 }
 
@@ -499,8 +601,20 @@ is_running() {
   [ -n "$(running_pids)" ]
 }
 
+stop_rpc_helpers() {
+  local exe p
+  for p in $(pidof samba-dcerpcd rpcd_classic rpcd_lsad rpcd_winreg 2>/dev/null); do
+    exe=$(readlink "/proc/$p/exe" 2>/dev/null)
+    case "$exe" in
+      "$MODDIR/bin/samba-dcerpcd"|"$MODDIR/bin/rpcd_classic"|"$MODDIR/bin/rpcd_lsad"|"$MODDIR/bin/rpcd_winreg")
+        kill "$p" 2>/dev/null ;;
+    esac
+  done
+}
+
 stop_server() {
   local p i
+  stop_rpc_helpers
   log_module INFO STOP "請求停止；pids=$(running_pids | tr '\n' ' ')"
   for p in $(running_pids); do
     kill "$p" 2>/dev/null
@@ -571,7 +685,12 @@ write_smb_conf() {
   local iface bind readonly writable auth_note
   local effective_min effective_max signing_mode encrypt_mode ntlm_mode
   local effective_share_path receivefile_size
-  iface=$(interfaces_line)
+  iface=$(interfaces_line report) || {
+    log_module ERROR BIND_EMPTY "沒有可綁定的可信任 LAN；請啟用自動介面或指定手機目前的 LAN IP／介面名稱"
+    echo "沒有可綁定的可信任 LAN，請檢查介面設定" >&2
+    capture_start_failure no_bindable_lan
+    return 1
+  }
   [ "$BIND_INTERFACES" = "1" ] && bind=yes || bind=no
   # 無人值守的開機自啟固定啟用 LAN 安全綁定。
   [ "${AUTO_START:-0}" = "1" ] && bind=yes
@@ -601,6 +720,7 @@ write_smb_conf() {
     auth_note="user"
     cat > "$CONF" <<EOF
 [global]
+   dbwrap_tdb_mutexes:* = no
    server role = standalone server
    security = user
    workgroup = $WORKGROUP
@@ -657,6 +777,7 @@ EOF
     auth_note="guest"
     cat > "$CONF" <<EOF
 [global]
+   dbwrap_tdb_mutexes:* = no
    server role = standalone server
    security = user
    workgroup = $WORKGROUP
@@ -714,6 +835,7 @@ EOF
 
 suspend_server_for_network() {
   local p i
+  stop_rpc_helpers
   log_module WARN LAN_LOST "可信任 LAN 消失；準備暫停 smbd"
   for p in $(running_pids); do
     kill "$p" 2>/dev/null
@@ -738,19 +860,29 @@ suspend_server_for_network() {
 }
 
 start_server() {
-  local i
+  local i p launch_rc
   load_config
   log_module INFO START "請求啟動；auth=$AUTH_MODE auto_start=$AUTO_START enabled=$ENABLED share=$SHARE_PATH"
+  require_server_tools || return 1
   if [ ! -x "$SMBD" ]; then
     echo "找不到 smbd 或無執行權限: $SMBD" >&2
     return 1
   fi
 
-  if is_running; then
+  if smb_listener_ready; then
     echo "SMB 伺服器已在執行"
     module_prop_update_status
     status_text
     return 0
+  fi
+
+  # Retire an unhealthy instance before trying to bind the configured sockets.
+  if is_running; then
+    stop_rpc_helpers
+    for p in $(running_pids); do kill "$p" 2>/dev/null; done
+    i=0
+    while is_running && [ "$i" -lt 10 ]; do sleep 0.1; i=$((i + 1)); done
+    for p in $(running_pids); do kill -9 "$p" 2>/dev/null; done
   fi
 
   write_smb_conf || {
@@ -761,13 +893,8 @@ start_server() {
   log_module INFO START "啟動前 LAN=$(auto_interfaces_key) interfaces=$(interfaces_line) change_notify=yes kernel_notify=yes dir_leases=no"
   "$SMBD" --log-basename="$LOGDIR" -D -s "$CONF" >>"$LOGDIR/smbd.stdout.log" 2>>"$LOGDIR/smbd.stderr.log"
 
-  i=0
-  while ! is_running && [ "$i" -lt 15 ]; do
-    sleep 0.1
-    i=$((i + 1))
-  done
-
-  if is_running; then
+  launch_rc=$?
+  if [ "$launch_rc" -eq 0 ] && wait_smb_ready; then
     rm -f "$RUNTIME/pending_auth_start" "$RUNTIME/waiting_network" 2>/dev/null
     auto_interfaces_key > "$RUNTIME/interface_key" 2>/dev/null
     sed -i 's/^ENABLED=.*/ENABLED=1/' "$CFG" 2>/dev/null
@@ -778,14 +905,19 @@ start_server() {
     return 0
   fi
 
-  log_module ERROR START_FAIL "smbd 未進入執行狀態；LAN=$(auto_interfaces_key)"
-  echo "SMB 伺服器啟動失敗，請查看日誌: $LOGDIR/smbd.log / smbd.stderr.log" >&2
-  tail -n 40 "$LOGDIR/smbd.stderr.log" 2>/dev/null
+  stop_rpc_helpers
+  for p in $(running_pids); do kill "$p" 2>/dev/null; done
+  rm -f "$RUNTIME/interface_key" 2>/dev/null
+  capture_start_failure listener_not_ready
+  log_module ERROR START_FAIL "smbd 未穩定監聽設定埠；rc=$launch_rc LAN=$(auto_interfaces_key)"
+  echo "SMB 伺服器啟動失敗，請查看日誌: $LOGDIR/log.smbd / smbd.stderr.log" >&2
+  tail -n 40 "$LOGDIR/log.smbd" "$LOGDIR/smbd.stderr.log" 2>/dev/null
   return 1
 }
 
 restart_server() {
   stop_server >/dev/null 2>&1
+  sed -i "s/^ENABLED=.*/ENABLED=1/" "$CFG" 2>/dev/null
   start_server
 }
 

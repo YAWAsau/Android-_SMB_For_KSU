@@ -2,15 +2,19 @@
 
 在已取得 Root 權限的 Android 裝置上執行 Samba `smbd`，並透過模組 WebUI 管理 SMB 分享、認證、協議、網路介面與日誌。
 
-目前版本：`v0.3.11-remove-mt-compat-20260715`  
-版本代碼：`41`  
-架構：`arm64-v8a`
+目前版本：`v0.3.14-samba-4.25.0-static-ndkr29-api28-logfix3-lto`  
+版本代碼：`47`  
+架構：`arm64-v8a`  
+Samba：`4.25.0`  
+Samba 建置目標：Android API 28／NDK r29，完整靜態 ELF，`-Os + ThinLTO`
 
 > 本模組會以 Root 身分執行 `smbd`。請只分享必要目錄，優先使用帳號密碼模式，並且不要把 TCP 445 直接暴露到網際網路。
 
 ## 功能
 
-- 內建 Samba 4.24.4 `smbd`
+- 內建 Samba 4.25.0 `smbd` 與四個 RPC 輔助程式
+- 五個伺服器 ELF 均為 ARM64 完整靜態連結，無 `PT_INTERP` 或 `DT_NEEDED`
+- Samba 採 `-Os + ThinLTO`、未使用區段移除與相同程式碼合併，未因精簡額外裁掉協定或認證功能
 - WebUI 啟動、停止與重新啟動 SMB 服務
 - Guest／匿名模式
 - 使用者名稱／密碼模式
@@ -83,7 +87,7 @@ NT Hash 仍屬敏感認證資料，不應分享診斷目錄、runtime private �
 - KernelSU／KernelSU Next 與 APatch 類 WebUI 管理器可使用完整 WebUI
 - 沒有相容 WebUI bridge 時，SMB 服務及命令列控制仍可使用
 
-目前發布包只包含 arm64 版 `smbd`，其他架構會在安裝時中止。
+目前發布包只包含 ARM64 版 Samba 伺服器與 RPC 程式，其他架構會在安裝時中止。Samba 編譯目標為 API 28（Android 9）；目前實機驗證使用 Android 17，尚未逐一驗證 Android 9 至其他版本、ROM 與 Root 管理器。
 
 ## 安裝
 
@@ -151,6 +155,16 @@ smb://192.168.1.100/SpeedBackup/
 
 帳號密碼模式請使用 WebUI 內設定的 SMB 使用者名稱與密碼。Windows 連線建議使用帳號密碼模式。
 
+### MT 管理器
+
+在 MT「新增網路儲存空間 → SMB」填入手機目前的 LAN 位址與連接埠 `445`。
+Guest 模式下留空網域、使用者名稱與密碼；帳密模式則使用 WebUI 設定的 SMB 帳密。
+MT 帳號／VIP 登入與 SMB 伺服器帳密是兩套不同的認證。
+
+已實測 MT 2.26.9 由另一台 Android 手機匿名連線，成功列出共享、瀏覽目錄並開啟測試文字檔。
+此項驗證不涵蓋 MT 的帳密模式、寫入、大檔傳輸或其他 MT 版本。
+遇到問題請提供 MT 版本、完整錯誤畫面、登入模式與模組診斷資料。
+
 ## WebUI 設定
 
 ### 分享設定
@@ -170,9 +184,11 @@ smb://192.168.1.100/SpeedBackup/
 | Port | 預設為 TCP 445 |
 | 自動加入目前 IPv4 | 從可信任 LAN 介面取得 IPv4／CIDR |
 | 只綁定指定介面 | 將 `smbd` 限制在產生的 interfaces 清單 |
-| 額外 interfaces／CIDR | 手動加入額外位址或網段 |
+| 額外 interfaces／CIDR | 指定目前可信任 LAN 的介面名稱或手機位址；使用核心回報的實際 CIDR，忽略不存在的位址 |
 | NetBIOS | Samba NetBIOS 名稱 |
 | Workgroup | SMB Workgroup 名稱 |
+
+不接受 `0.0.0.0/0` 作為額外綁定；填入手機位址但遮罩不符時，會使用目前實際遮罩。沒有可綁定的可信任 LAN 時，不會只靠短暫出現的 PID 回報啟動成功。
 
 WebUI 設定採即時保存。服務執行中時，需要重新載入的設定會自動重新啟動 `smbd`。
 
@@ -254,6 +270,7 @@ sh "$MODDIR/control.sh" set_config \
 | `/data/adb/smbdwebui/runtime/log` | 模組及 Samba 日誌 |
 | `/data/adb/smbdwebui/runtime/private` | Samba passdb 與使用者對應 |
 | `/data/adb/smbdwebui/runtime/run` | PID 及執行時資料 |
+| `/data/adb/smbdwebui/runtime/tmp` | 模組專用暫存目錄，權限 0700 |
 
 升級時會保留 `config.conf`。解除安裝時會刪除已保存的 SMB 認證資料，但刻意保留非機密設定，重新安裝後可沿用。
 
@@ -287,13 +304,26 @@ su
 
 回報問題時請一併提供診斷檔，並先確認其中沒有你不希望公開的裝置名稱、路徑、IP 位址或其他環境資訊。
 
+### 自動啟動診斷與重試
+
+- 檢查五個伺服器／RPC 程式是否存在且可執行。
+- 啟動期間檢查設定的監聽位址與埠，需連續五次就緒才回報成功；等待次數有上限。
+- 失敗時保存 `runtime/log/auto_failure.log`，上一份保存為 `auto_failure.previous.log`，各最多 64 KiB。
+- 相同失敗診斷在 60 秒內去重；同一網路／設定狀態下，自動嘗試最多三次且至少間隔 30 秒。
+- 自動重試只在後續相關網路事件到來時評估；網路或設定變更會重置重試限制，手動啟動不受此限制。
+- 停止服務或離開 LAN 時一併停止 RPC 輔助程序。
+
+以上檢查不建立常駐定時巡檢。若服務靜默退出且沒有新的網路事件，watcher 不會立即察覺。
+Samba 活躍連線與自身協定計時器仍可能使用 CPU／網路，因此不宣稱整個服務完全零功耗。
+
 ## 運作架構
 
 ```text
 模組 WebUI
   └─ control.sh
       ├─ 產生 runtime/smb.conf
-      ├─ 啟動／停止 bin/smbd
+      ├─ 啟動／停止 bin/smbd，檢查監聽就緒與失敗診斷
+      │   └─ samba-dcerpcd 按需啟動 rpcd_classic／rpcd_lsad／rpcd_winreg
       ├─ 更新模組卡片
       └─ 輸出狀態與診斷
 
@@ -326,6 +356,10 @@ uninstall.sh                     解除安裝清理
 module.prop                      模組資訊
 sha256sum.txt                    發布包內檔案雜湊
 bin/smbd                         Samba 伺服器
+bin/samba-dcerpcd                RPC 服務調度
+bin/rpcd_classic                 共享列舉等傳統 RPC 服務
+bin/rpcd_lsad                    LSA／SAMR 等 RPC 服務
+bin/rpcd_winreg                  遠端登錄 RPC 服務
 bin/netwatch                     原生 rtnetlink watcher
 bin/propwait                     原生 Android property wait
 bin/ntlmhash                     NT Hash 建立工具
@@ -335,7 +369,70 @@ webroot/                         WebUI
 
 `sha256sum.txt` 供人工或發布流程核對檔案，目前安裝腳本不會強制執行整包雜湊驗證。
 
-## 開發與建置
+## Samba 原始碼建置
+
+統一建置包使用同一套 Samba 原始碼、Android 補丁與建置腳本，涵蓋客戶端及伺服器。
+建置包不含可刷模組、模組底包或模組打包工具。完成後由維護者自行替換模組中的二進制。
+
+### Windows 本機建置
+
+準備 MSYS2、Git for Windows 與 ADB；目前腳本使用 `C:\msys64`、Git 所附 GPG 與
+`C:\platform-tools\adb.exe`。腳本會檢查／準備 NDK 與其餘編譯依賴，詳見建置包內 `build.ps1`。
+使用 Windows PowerShell 5.1 或 PowerShell 7，在建置包根目錄執行：
+
+```powershell
+./build.ps1                       # 預設：六個 ELF，全套 -Os + ThinLTO
+./build.ps1 -BuildScope client     # 同一套設定，只建置 smbclient
+./build.ps1 -DeviceSerial SERIAL   # 連接多台 ADB 裝置時指定測試裝置
+./build.ps1 -Clean                # 重建目前選定的 Samba 原始碼工作目錄
+```
+
+編譯與連結全部在 Windows 本機完成，不使用 Termux。ADB 用於配置階段的目標端探測及
+`smbclient --version` 執行檢查，目前建置流程仍要求連接已授權的 ARM64 Android 裝置。
+
+預設輸出目錄為 `dist/android-arm64-size/`：
+
+| 產物 | 用途 | 本版大小（位元組） |
+|---|---|---:|
+| `smbclient` | 腳本使用的 SMB 客戶端 | 7,551,304 |
+| `smbd` | 手機上的 SMB 伺服器 | 11,168,352 |
+| `samba-dcerpcd` | RPC 調度 | 5,856,168 |
+| `rpcd_classic` | 傳統 RPC 服務 | 13,830,696 |
+| `rpcd_lsad` | LSA／SAMR 服務 | 8,826,128 |
+| `rpcd_winreg` | 遠端登錄服務 | 6,989,872 |
+
+`smbclient` 不能改名替代 `smbd`。模組伺服器端需搭配其餘五個程式，放入 `bin/` 並設定執行權限。
+RPC helper 的編譯路徑為 `/data/adb/modules/smbdwebui/bin`，預設日誌目錄為
+`/data/adb/smbdwebui/runtime/log`；更改模組 ID 或目錄時需一併處理這些路徑。
+`netwatch`、`propwait`、`ntlmhash`、`smbnotify.dex` 由各自原始碼與工具鏈維護，不屬於 Samba 建置目標。
+
+Samba 使用 `-Os -fPIE -ffunction-sections -fdata-sections -flto=thin`，並搭配
+`--gc-sections --icf=safe`；GMP／Nettle／GnuTLS 靜態函式庫仍使用原來的 `-O2` 建置。
+`-BuildProfile standard` 可選用一般 `-O2` 版本，輸出至 `dist/android-arm64/`。
+快取位於 `%USERPROFILE%/SambaAndroidBuild`，不需要建立 S: 磁碟映射。
+
+### 版本更新與重現
+
+- 每次執行查詢 Samba 官方下載頁的最新穩定版，下載後驗證簽章與固定金鑰指紋。
+- 相同版本重用快取；查詢失敗時警告並使用最新快取來源，快取不保證是官網最新版。
+- 建置包檔名中的 4.25.0 表示內附產物版本，不會將後續建置鎖在 4.25.0。
+- NDK r29、API 28 及依賴版本固定，不隨 Samba 自動升級；也不在背景自動更新。
+- 未來 Samba 若改動補丁位置，腳本會停止並要求維護補丁，不保證新版不需調整即可編譯。
+- `build-metadata.json`、`source-version.txt`、`SHA256SUMS.txt` 記錄實際建置版本與產物。
+- 發布對應原始碼請保留 `upstream-source/` 內精確版本來源、補丁、腳本及授權檔。
+  日後直接執行會查最新版本，因此保留精確版本來源仍是重現歷史產物的重要依據。
+
+### 已完成驗證
+
+本版六個 Samba ELF 的測試包含完整靜態檢查，以及在 Android 17 備用機上的 16 項客戶端、
+11 項伺服器／RPC 檢查：SMB2.02／SMB3.11、Guest／NTLMv2 帳密、錯誤密碼拒絕、中文檔名、
+4 MiB 隨機檔案上下載雜湊、空檔、重新命名、刪除、共享列舉、LSARPC 政策查詢、
+winreg 唯讀查詢及停止／啟動重連。報告只對所記錄 SHA256 的產物有效。
+
+MT 另完成跨手機匿名連線與文字檔讀取測試。尚未驗證所有 Android 版本、Kerberos／AD、
+強制 SMB 加密模式或大檔效能；成功編譯不等於新版已通過上述所有功能測試。
+
+## 開源檔案與模組打包
 
 Release ZIP 內含可執行檔，但公開原始碼倉庫應同時提供：
 
@@ -363,7 +460,7 @@ release/                打包及 checksum 腳本
 
 ## 授權與第三方元件
 
-本模組包含 Samba 4.24.4 的 `smbd`。Samba 專案使用 GPLv3-or-later／LGPLv3-or-later 授權，實際適用條款依元件而定。散布編譯後的 Samba binary 時，應一併提供對應原始碼、修改內容、建置方式及必要授權文字。
+本模組包含 Samba 4.25.0 的 `smbd` 與 RPC 輔助程式。Samba 專案使用 GPLv3-or-later／LGPLv3-or-later 授權，實際適用條款依元件而定。散布編譯後的 Samba binary 時，應一併提供對應原始碼、修改內容、建置方式及必要授權文字。
 
 正式公開前請完成：
 
@@ -371,7 +468,7 @@ release/                打包及 checksum 腳本
 - 明確標示自有腳本、WebUI、native helper 與 Dex 的授權
 - 加入 Samba 對應版本的授權文字
 - 加入 `THIRD_PARTY_NOTICES.md`
-- 提供本次 `bin/smbd` 對應的完整 source／patch／build instructions
+- 提供本次全部 Samba ELF 對應的完整 source／patch／build instructions，以及 GMP／Nettle／GnuTLS 等相依元件來源與授權
 - 確認所有 binary 都能追溯到公開原始碼及建置產物
 
 若希望整個倉庫使用單一且與 Samba 相容的授權，`GPL-3.0-or-later` 是較容易管理的選項；最終授權仍應由專案維護者決定。

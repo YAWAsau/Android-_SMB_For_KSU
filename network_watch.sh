@@ -216,6 +216,25 @@ event_is_relevant() {
   is_lan_candidate_iface "$iface"
 }
 
+# No timer: retries are considered only when a relevant kernel event arrives.
+failed_start_key=''
+failed_start_count=0
+failed_start_time=0
+allow_event_start() {
+  local key now rest
+  key="$current|$(cksum < "$CFG" 2>/dev/null)"
+  read -r now rest < /proc/uptime
+  now=${now%%.*}
+  if [ "$key" != "$failed_start_key" ]; then
+    failed_start_key="$key"; failed_start_count=0; failed_start_time=0
+  fi
+  [ "$failed_start_count" -ge 3 ] && return 1
+  if [ "$failed_start_count" -gt 0 ] && [ $((now - failed_start_time)) -lt 30 ]; then return 1; fi
+  failed_start_count=$((failed_start_count + 1))
+  failed_start_time=$now
+  return 0
+}
+
 reconcile_network() {
   local reason="$1" current last was_waiting
 
@@ -239,6 +258,7 @@ reconcile_network() {
   last="$(cat "$RUNTIME/interface_key" 2>/dev/null)"
 
   if [ -z "$current" ]; then
+    failed_start_key=""; failed_start_count=0
     if sh "$CONTROL" is_running >/dev/null 2>&1; then
       if sh "$CONTROL" suspend_network >/dev/null 2>&1; then
         log_watch WARN LAN_LOST "可信任 LAN 消失，已暫停 smbd；event=$reason"
@@ -257,8 +277,10 @@ reconcile_network() {
   fi
 
   if ! sh "$CONTROL" is_running >/dev/null 2>&1; then
+    allow_event_start || return 0
     rm -f "$RUNTIME/waiting_network" 2>/dev/null
     if sh "$CONTROL" start >/dev/null 2>&1; then
+      failed_start_count=0
       log_watch INFO LAN_READY "可信任 LAN 已就緒，已啟動 smbd：$current；event=$reason"
       notify_start_success "$current"
     else
@@ -319,7 +341,6 @@ exec 3< "$FIFO"
 log_watch INFO MONITOR_READY "native_pid=$native_pid；version=$netwatch_version"
 
 while IFS= read -r event <&3; do
-  [ "$(cat "$PIDFILE" 2>/dev/null)" = "$$" ] || exit 0
   [ -n "$event" ] || continue
 
   # rmnet/VPN/Wi-Fi Aware 等事件直接忽略，不寫日誌、不重新掃描 LAN。
