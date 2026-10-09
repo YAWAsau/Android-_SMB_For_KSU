@@ -2,13 +2,35 @@
 
 在已取得 Root 權限的 Android 裝置上執行 Samba `smbd`，並透過模組 WebUI 管理 SMB 分享、認證、協議、網路介面與日誌。
 
-目前版本：`v0.3.14-samba-4.25.0-static-ndkr29-api28-logfix3-lto`  
-版本代碼：`47`  
-架構：`arm64-v8a`  
-Samba：`4.25.0`  
-Samba 建置目標：Android API 28／NDK r29，完整靜態 ELF，`-Os + ThinLTO`
+目前版本：`v0.3.16-liquid-glass`
+版本代碼：`49`
+架構：`arm64-v8a`
+Samba：`4.25.0`
+本次 Samba 二進位沿用提供的 v0.3.15 包；ELF 標記為 Android API 28／NDK r30（16248370），本次沒有重新編譯。
 
 > 本模組會以 Root 身分執行 `smbd`。請只分享必要目錄，優先使用帳號密碼模式，並且不要把 TCP 445 直接暴露到網際網路。
+
+## v0.3.16 更新與驗證
+
+- WebUI 加入高通透毛玻璃、背景模糊、藍綠／淡紫光暈與反光邊緣；保留系統、淺色、深色與 OLED 純黑主題。
+- 保留三語、服務控制與設定流程；改善焦點提示、縮放、安全區域及減少動態效果的支援。
+- 相對使用者提供的 v0.3.15 包，8 個 ELF 與 smbnotify.dex 均逐位元保留；沒有重新編譯 Samba。
+- Chromium 手機尺寸 412×915、DPR 2、4 倍 CPU 降速的原版／新版對照：捲動未觀察到超過 50ms 的長任務，主題切換及操作檢查通過。這是桌面模擬，不能當成 Android WebView 實機或 GPU 效能保證。
+- 本次沒有部署到手機或重跑 SMB 傳輸、帳密與通知端到端測試。
+
+![淺色液態玻璃 WebUI（模擬資料）](docs/liquid-glass-light.png)
+
+## 來源與重建範圍
+
+Shell、WebUI HTML/CSS/JavaScript 均可直接修改。`build/` 保留既有 Samba 建置資料（r29 歷史配方），尚未核對為本次 r30 二進位的精確對應來源。`netwatch`、`ntlmhash`、`propwait`、`smbnotify.dex` 的對應完整來源目前不在此倉庫；不能把本倉庫稱為所有二進位皆可重建的完整源碼包。
+
+可用 Python 3 重新封裝現有模組（不重編二進位）：
+
+```powershell
+python scripts/package_module.py
+```
+
+輸出至 `dist/`，包含模組 ZIP 與 SHA256；ZIP 內 `sha256sum.txt` 校驗每個實際 runtime 檔案。`update.json` 提供模組管理器更新資訊。
 
 ## 功能
 
@@ -369,7 +391,7 @@ webroot/                         WebUI
 
 `sha256sum.txt` 供人工或發布流程核對檔案，目前安裝腳本不會強制執行整包雜湊驗證。
 
-## Samba 原始碼建置
+## Samba 原始碼建置（既有 r29 歷史配方）
 
 統一建置包使用同一套 Samba 原始碼、Android 補丁與建置腳本，涵蓋客戶端及伺服器。
 建置包不含可刷模組、模組底包或模組打包工具。完成後由維護者自行替換模組中的二進制。
@@ -422,7 +444,7 @@ Samba 使用 `-Os -fPIE -ffunction-sections -fdata-sections -flto=thin`，並搭
 - 發布對應原始碼請保留 `upstream-source/` 內精確版本來源、補丁、腳本及授權檔。
   日後直接執行會查最新版本，因此保留精確版本來源仍是重現歷史產物的重要依據。
 
-### 已完成驗證
+### 先前版本的已完成驗證（不代表 v0.3.16 已重測）
 
 本版六個 Samba ELF 的測試包含完整靜態檢查，以及在 Android 17 備用機上的 16 項客戶端、
 11 項伺服器／RPC 檢查：SMB2.02／SMB3.11、Guest／NTLMv2 帳密、錯誤密碼拒絕、中文檔名、

@@ -1,0 +1,53 @@
+/* Presentation only. Service actions and shipped binaries are unchanged. */
+:root, :root[data-theme="light"] {
+  color-scheme: light;
+  --bg:#e9eff3; --card:rgba(250,253,255,.36); --t1:#182d3b; --t2:#526776; --t3:#607688;
+  --bdr:rgba(57,89,108,.17); --bdr2:rgba(238,247,255,.34); --ac:#196ba6; --danger:#c53650; --warn:#f3c56b;
+  --glass-edge:rgba(255,255,255,.92); --glass-shade:rgba(35,65,84,.10); --glass-solid:#f3f7fa;
+  --glass-glow-a:#84cfd5; --glass-glow-b:#aac8f3; --glass-glow-c:#cab6e5; --glass-on-accent:#fff;
+}
+@media(prefers-color-scheme:dark) {
+  :root:not([data-theme]) {
+    color-scheme:dark;
+    --bg:#101b28; --card:rgba(25,43,62,.42); --t1:#e3edf5; --t2:#abbfcd; --t3:#9cb0bf;
+    --bdr:rgba(175,204,227,.18); --bdr2:rgba(73,99,123,.25); --ac:#6bbcf4; --danger:#b9324c; --warn:#e9bb63;
+    --glass-edge:rgba(194,219,241,.24); --glass-shade:rgba(0,8,19,.24); --glass-solid:#203347;
+    --glass-glow-a:#195b67; --glass-glow-b:#2f4c7b; --glass-glow-c:#55406c; --glass-on-accent:#102b40;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme:dark;
+  --bg:#101b28; --card:rgba(25,43,62,.42); --t1:#e3edf5; --t2:#abbfcd; --t3:#9cb0bf;
+  --bdr:rgba(175,204,227,.18); --bdr2:rgba(73,99,123,.25); --ac:#6bbcf4; --danger:#b9324c; --warn:#e9bb63;
+  --glass-edge:rgba(194,219,241,.24); --glass-shade:rgba(0,8,19,.24); --glass-solid:#203347;
+  --glass-glow-a:#195b67; --glass-glow-b:#2f4c7b; --glass-glow-c:#55406c; --glass-on-accent:#102b40;
+}
+html{min-height:100%;background:var(--bg)}
+body{max-width:780px;min-height:100vh;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 18px max(28px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 8% 0%,var(--glass-glow-a) 0%,transparent 48%),radial-gradient(ellipse at 100% 38%,var(--glass-glow-b) 0%,transparent 48%),radial-gradient(ellipse at 12% 95%,var(--glass-glow-c) 0%,transparent 50%),var(--bg)}
+.glass-brand{display:flex;align-items:center;gap:10px;margin:0 5px 22px;font-size:12px;font-weight:750;letter-spacing:.11em;color:var(--t2)}
+.glass-brand svg{width:25px;height:25px;color:var(--ac)}
+.card,.status-line,.tab-btn-row,.toast{background:var(--card);border:1px solid var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-edge),0 8px 30px var(--glass-shade);-webkit-backdrop-filter:blur(28px) saturate(175%);backdrop-filter:blur(28px) saturate(175%)}
+.card{border-radius:26px;padding:22px;margin-bottom:16px}.status-line{padding:20px;border-radius:24px;margin-bottom:16px;flex-wrap:wrap;gap:12px}.dot{flex-shrink:0}.status-line #status-text{font-size:17px!important;letter-spacing:-.025em}
+h1,h2,h3{font-size:15px;letter-spacing:.025em;margin-bottom:18px}.kv{grid-template-columns:94px minmax(0,1fr);padding:11px 0;margin:0;border-bottom:1px solid var(--bdr);font-size:12px;gap:12px}.kv:last-child{border-bottom:0}.kv span{min-width:0;overflow-wrap:anywhere}
+.btn{min-height:46px;touch-action:manipulation;border-radius:15px;padding:12px;font-size:13px;box-shadow:inset 0 1px 0 rgba(255,255,255,.20);transition:transform .18s ease,background-color .18s ease}
+.btn-primary{background:var(--ac);color:var(--glass-on-accent)}.btn-danger{background:var(--danger);color:#fff}.btn-secondary{background:var(--bdr2);border:1px solid var(--bdr);color:var(--t1)}.btn:disabled{opacity:.55;cursor:wait}
+.tab-btn-row{padding:5px;gap:4px;border-radius:20px;margin:20px 0 16px}.tab-btn{min-height:44px;min-width:0;font-size:12px;line-height:1.5;padding:8px 5px;border:1px solid transparent;border-radius:15px}.tab-btn.active{background:var(--bdr2);border-color:var(--glass-edge);box-shadow:inset 0 1px 0 var(--glass-edge),0 3px 12px var(--glass-shade);color:var(--ac)}
+.input{background:var(--bdr2);padding:12px;border-radius:14px;min-height:46px;font-size:16px;box-shadow:inset 0 1px 0 var(--glass-edge)}.input:focus{outline:2px solid var(--ac);outline-offset:2px}.field{margin-bottom:18px}.field label{text-transform:none;font-size:12px;letter-spacing:.04em}.field .small{margin-top:7px;line-height:1.7}.setting-title{font-size:14px}.setting-sub{font-size:12px;line-height:1.8}.setting-row{padding:16px 0}.setting-main{gap:20px}.warn{color:#92600c}
+.toggle{width:46px;height:26px}.slider{border-radius:30px;box-shadow:inset 0 1px 3px var(--glass-shade);transition:.18s}.slider:before{width:22px;height:22px;box-shadow:0 2px 5px rgba(0,0,0,.15);transition:.18s}input:checked+.slider:before{transform:translateX(20px)}input:focus-visible+.slider{outline:3px solid var(--ac);outline-offset:4px}button:focus-visible{outline:3px solid var(--ac);outline-offset:3px}
+#log-content{background:var(--bdr2);border-radius:18px;line-height:1.8;overflow-wrap:anywhere}.toast-wrap{width:max-content;max-width:90%;bottom:max(26px,env(safe-area-inset-bottom))}.toast{border-radius:18px;line-height:1.6;overflow-wrap:anywhere}.theme-grid{gap:10px}.small{line-height:1.7}
+@media(prefers-color-scheme:dark){:root:not([data-theme]) .warn{color:#efc778}}
+:root[data-theme="dark"] .warn,:root[data-theme="oled"] .warn{color:#efc778}
+/* Preserve the existing explicit OLED option: black surfaces, glass edges. */
+:root[data-theme="oled"]{color-scheme:dark;--bg:#000;--card:#000;--t1:#f2f2f2;--t2:#b4bdc8;--t3:#9aa8b8;--bdr:#333b45;--bdr2:#111820;--ac:#6bbcf4;--glass-edge:#38424e;--glass-solid:#000;--glass-shade:transparent;--glass-on-accent:#102b40}
+:root[data-theme="oled"] body,:root[data-theme="oled"] .card,:root[data-theme="oled"] .status-line,:root[data-theme="oled"] .tab-btn-row,:root[data-theme="oled"] .toast{background:#000;backdrop-filter:none;-webkit-backdrop-filter:none}
+:root[data-theme="oled"] .tab-btn.active{background:#16212e}
+@media(max-width:380px){body{padding-left:12px;padding-right:12px}.card{padding:18px}.tab-btn{font-size:11px}.btn-row{flex-wrap:wrap}.btn-row .btn{min-width:110px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}.btn:active{transform:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.card,.status-line,.tab-btn-row,.toast{background:var(--glass-solid)}}
+@media(prefers-reduced-transparency:reduce){.card,.status-line,.tab-btn-row,.toast{background:var(--glass-solid);backdrop-filter:none;-webkit-backdrop-filter:none}}
+@media(forced-colors:active){.card,.status-line,.tab-btn-row,.btn{border:1px solid CanvasText}.tab-btn.active{outline:2px solid Highlight}}
+
+/* Let ambient color show through the frosted cards without a fixed background compositor. */
+body{background-attachment:scroll}
+.card,.status-line,.tab-btn-row{background-image:linear-gradient(135deg,rgba(255,255,255,.14),rgba(255,255,255,.015) 45%,rgba(255,255,255,.06));box-shadow:inset 0 1px 0 var(--glass-edge),inset 1px 0 0 rgba(255,255,255,.14),0 10px 32px var(--glass-shade)}
+:root[data-theme="oled"] .card,:root[data-theme="oled"] .status-line,:root[data-theme="oled"] .tab-btn-row{background-image:none}

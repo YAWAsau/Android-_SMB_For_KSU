@@ -6,7 +6,8 @@ LIVE_MODPATH="/data/adb/modules/$MODID"
 DATA_DIR="/data/adb/smbdwebui"
 CFG="$DATA_DIR/config.conf"
 INSTALL_LOG="$DATA_DIR/runtime/log/module.log"
-
+echo "$PATH"
+busybox
 mkdir -p "$DATA_DIR/runtime/log" 2>/dev/null
 log_install() {
   printf '%s pid=%s component=install level=%s stage=%s %s\n'     "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" "$$" "$1" "$2" "$3"     >> "$INSTALL_LOG" 2>/dev/null

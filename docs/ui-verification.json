@@ -1,0 +1,106 @@
+{
+  "scope": "Headless desktop Chrome; 412x915 DPR2; 4x CPU throttle; mock bridge; rAF gaps are not GPU presented FPS or physical Android performance",
+  "browser": "154.0.8037.93",
+  "results": [
+    {
+      "which": "smb",
+      "variant": "original",
+      "scheme": "light",
+      "scroll": {
+        "frames": 767,
+        "p50_ms": 4.2,
+        "p95_ms": 4.3,
+        "max_ms": 9,
+        "over_33ms": 0,
+        "over_50ms": 0,
+        "long_tasks": 0,
+        "max_long_task": 0
+      },
+      "main_thread_task_ms": 55.96,
+      "layout_ms": 0,
+      "style_ms": 0,
+      "theme_two_raf_ms": [
+        3.7,
+        5.7,
+        6.4,
+        4.6
+      ],
+      "errors": []
+    },
+    {
+      "which": "smb",
+      "variant": "glass",
+      "scheme": "light",
+      "scroll": {
+        "frames": 768,
+        "p50_ms": 4.2,
+        "p95_ms": 4.4,
+        "max_ms": 4.5,
+        "over_33ms": 0,
+        "over_50ms": 0,
+        "long_tasks": 0,
+        "max_long_task": 0
+      },
+      "main_thread_task_ms": 141.1,
+      "layout_ms": 0,
+      "style_ms": 0,
+      "theme_two_raf_ms": [
+        4.2,
+        8,
+        6.7,
+        8.9
+      ],
+      "errors": []
+    },
+    {
+      "which": "smb",
+      "variant": "original",
+      "scheme": "dark",
+      "scroll": {
+        "frames": 768,
+        "p50_ms": 4.2,
+        "p95_ms": 4.3,
+        "max_ms": 4.4,
+        "over_33ms": 0,
+        "over_50ms": 0,
+        "long_tasks": 0,
+        "max_long_task": 0
+      },
+      "main_thread_task_ms": 55.54,
+      "layout_ms": 0,
+      "style_ms": 0,
+      "theme_two_raf_ms": [
+        6.5,
+        5.4,
+        6.2,
+        4.8
+      ],
+      "errors": []
+    },
+    {
+      "which": "smb",
+      "variant": "glass",
+      "scheme": "dark",
+      "scroll": {
+        "frames": 768,
+        "p50_ms": 4.2,
+        "p95_ms": 4.4,
+        "max_ms": 4.5,
+        "over_33ms": 0,
+        "over_50ms": 0,
+        "long_tasks": 0,
+        "max_long_task": 0
+      },
+      "main_thread_task_ms": 147.67,
+      "layout_ms": 0,
+      "style_ms": 0,
+      "theme_two_raf_ms": [
+        7.8,
+        11.3,
+        6,
+        8.8
+      ],
+      "errors": []
+    }
+  ]
+}

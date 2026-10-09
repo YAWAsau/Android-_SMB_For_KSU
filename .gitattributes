@@ -1,0 +1,6 @@
+* text=auto eol=lf
+bin/** -text
+*.png -text
+*.gz -text
+*.xz -text
+*.zip -text
