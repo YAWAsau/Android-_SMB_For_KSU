@@ -9,102 +9,11 @@ Samba：`4.25.0`
 Samba 五個 ELF 已於 RC2 使用 NDK r30/API 28 重建，smbd 於 RC6 移除啟動版權橫幅；RC8 沿用上述產物。
 
 > 本模組會以 Root 身分執行 `smbd`。請只分享必要目錄，優先使用帳號密碼模式，並且不要把 TCP 445 直接暴露到網際網路。
-
-## v0.3.17 RC9：舊設定升級相容
-
-修復既有 config.conf 含 `MT_COMPAT_MODE=0` 時安裝失敗。此欄位以 0/1 純資料保留，保存其他設定時不遺失；不新增 MT 專用 Samba 行為。其他未知欄位仍回報錯誤。
-
-安裝器會顯示及記錄 selfcheck 的原始錯誤與退出碼；設定解析、pidfd、rtnetlink、inotify 錯誤不再全部誤報成核心能力不足。以回報者原始設定於隔離目錄重現 RC8 失敗、RC9 通過，保存前後全部設定值相同。16 個 Android 單元測試通過；尚待回報者手機確認完整安裝。
-
-## v0.3.17 RC8：單一自家 Rust ELF
-
-開機屬性等待直接收進 smbctl，以 Android property futex 事件等待，保留 120 秒一次性期限；不再啟動 getprop 或 propwait 子程序。另提供 `smbctl propwait equals NAME VALUE [TIMEOUT_MS]`，不建立模塊狀態。移除獨立 propwait ELF、舊 C 源碼及建置腳本。Samba/RPC 與通知 DEX 保持原產物。
-
-NDK r30/API 28，LOAD 與 RELRO 使用 16 KiB 對齊。Android 15 個單元測試、首次建立／值更新／逾時屬性等待，以及 Guest 上下載、帳密與錯誤密碼、崩潰恢復、事件去重等隔離測試通過。新等待實作仍需下次真實冷開機確認。
-
-## v0.3.17 RC7：單一 CE 屬性等待
-
-解鎖屬性存在後，用 prop_info 的 serial／wait 只等待該屬性，其他系統屬性不再喚醒 CE worker。只有屬性尚未建立時才等待全域屬性事件，並處理建立時的競態。非 CE 路徑完全不啟動屬性執行緒。分享使用者改變時 watcher 以 exec 更換自身監聽上下文，保留 PID 並消除舊執行緒；不引入計時輪詢。
-
-主力機通過 15 個單元測試、登入讀寫與事件恢復整合測試，以及 non-CE → CE → non-CE 切換驗證（執行緒數 1→2→1）。無關屬性事件不通知主 watcher。CPU 在真實事件發生時仍有必要用量，不保證所有情況永遠為零。
-
-## v0.3.17 RC6：精簡 smbd 啟動日誌
-
-源碼補丁只移除 smbd main() 的 DBG_STARTUP_NOTICE 版本／版權啟動宣告；保留 `smbd -V`、錯誤與警告日誌，以及源碼版權／授權。僅替換模塊的 smbd，其他服務端 helper 維持 RC2 產物。NDK r30/API 28、size/ThinLTO 重建；Android 隔離帳密／Guest／讀寫及事件恢復測試通過，新 log.smbd 為空，無效參數仍正確輸出診斷。同次開機既有日誌不追溯刪除。
-
-## v0.3.17 RC5：按開機輪替日誌
-
-以 `/proc/sys/kernel/random/boot_id` 辨識新開機，啟動服務前在 control.lock 保護下封存 runtime/log。當前日誌仍在 `/data/adb/smbdwebui/runtime/log/`；歷史在 `runtime/log-history/boot-<時間>-<上一輪boot_id>/`。首次升級將既有混合記錄標成 legacy。
-
-最多保留 3 份封存、封存合計上限 16 MiB，超限先淘汰最舊封存；當前日誌沿用原有各檔案大小輪替。通知 stderr、Samba 日誌與 auto_diagnostic.stamp 一起歸檔。同一次手機開機的服務重啟、網路重連、模塊更新均不清除當前日誌。新日誌首行記錄 BOOT_LOG_BEGIN 與 boot_id。
-
-15 個 Android 單元測試通過，包括同 boot 冪等、不同 boot 輪替、容量／數量上限、symlink 外部檔案保護、rename 中斷後恢復。輪替是啟動事件觸發，沒有背景清理輪詢。
-
-## v0.3.17 RC4：CE 解鎖事件
-
-參考 Mount_plus 的 user-state.sh：以 sys.user.<user>.ce_available 判斷 CE 解鎖，再檢查儲存根目錄可讀；屬性未提供時使用 am get-started-user-state，未知狀態不視為已解鎖。Rust 原生 property wait → eventfd 接入 watcher，搭配等待中的目錄 inotify，不設週期輪詢。適用 /sdcard、/storage/self/primary、/storage/emulated/<user>、/data/media/<user>、/data/user/<user>。一般重新鎖屏不會撤銷 CE 就緒。
-
-等待解鎖不耗盡啟動重試，WebUI 與模塊卡片顯示等待儲存狀態。主力機 Android 17 通過 12 個單元測試及隔離整合測試；閒置 5 秒 CPU ticks 152→152。沒有重開主力機，真實冷開機解鎖尚未驗證。
-
-## v0.3.17 RC3：開機分享路徑修復
-
-建立分享目錄改用 Samba 實際使用的 backing path，避免 `/sdcard` 開機連結尚未就緒時報 File exists，耗盡 watcher 重試。主力機 CPH2747 / Android 17 獨立 mount namespace 成功重現舊版失敗、新版啟動；未重開機驗證。新增錯誤訊息含實際路徑。
-
-## v0.3.17 RC2：mutex 與通知修復
-
-- Samba 4.25.0 的 gencache、cleanupdb、profile 與 Prometheus 路徑改成確認支援 robust mutex 後才要求；保留檔案鎖與實際錯誤診斷。五個服務端 ELF 使用 NDK r30/API 28 重建。
-- SMB 通知採掛載模塊的單次 system-context/BigText/Canvas 圖示方式，加入通知服務不可用、關機與 Binder 中斷處理，沒有輪詢或重試。
-- 新增共享資料夾＋網路節點圖示；使用 SMB 獨立通知頻道，修正 root/套件 UID 的頻道歸屬。
-- `native/notify/` 含通知完整源碼、建置腳本與競態測試。測試結果見 `docs/rc2-validation.md`。
-
-## v0.3.17 RC1：Rust 管理後端（歷史）
-
-- 五項收斂：狀態／JSON、純資料設定解析與原子保存、序列化啟停與程序身分、LAN 事件合併、程序持有的監聽 socket 驗證。
-- `native/smbctl/` 包含 Rust 完整源碼與 Cargo.lock；NDK r30／API 28、16 KiB ELF 對齊。
-- rtnetlink、inotify、pidfd 事件驅動；閒置沒有固定輪詢。啟動／退出期限、120ms 事件合併與失敗退避是一次性等待。
-- 移除舊 control.sh 管理函式、Shell watcher 與 netwatch ELF。Shell 僅保留模組入口、安裝升級、通知及診斷封裝。安裝器仍保留一次性的舊 watcher 清理，以支援升級。
-- WebUI 移除 12 秒輪詢；操作完成、返回前景與維護中心手動刷新時更新。頁面持續可見且沒有操作時，不會自動即時刷新外部狀態。
-- 核心須提供可用 pidfd_open/pidfd_send_signal、rtnetlink、inotify。一般需 Linux 5.3+ 或具備回移植；安裝前實測能力，不以 Android API 版本代替核心能力檢查。
-- Samba、RPC helpers、propwait、smbnotify.dex 不重編、不修改。獨立 ntlmhash ELF 已移除，NT Hash 計算收進 Rust，維持既有 NTLMv2 相容性；這不是認證協議安全升級。
-- RC 階段未推送候選更新；目前 v0.3.17 已轉為正式版。
-
-Rust 建置（Windows，先安裝 Rust 的 aarch64-linux-android target）：
-
-```powershell
-./native/build.ps1 -Ndk C:/path/to/android-ndk-r30
-python scripts/package_module.py
-```
-
-實機測試與限制見 [Rust 驗證紀錄](docs/rust-validation.md)。歷史 v0.3.16 的驗證範圍如下。
-
-## v0.3.16 更新與驗證
-
-- WebUI 加入高通透毛玻璃、背景模糊、藍綠／淡紫光暈與反光邊緣；保留系統、淺色、深色與 OLED 純黑主題。
-- 保留三語、服務控制與設定流程；改善焦點提示、縮放、安全區域及減少動態效果的支援。
-- 相對使用者提供的 v0.3.15 包，8 個 ELF 與 smbnotify.dex 均逐位元保留；沒有重新編譯 Samba。
-- Chromium 手機尺寸 412×915、DPR 2、4 倍 CPU 降速的原版／新版對照：捲動未觀察到超過 50ms 的長任務，主題切換及操作檢查通過。這是桌面模擬，不能當成 Android WebView 實機或 GPU 效能保證。
-- 本次沒有部署到手機或重跑 SMB 傳輸、帳密與通知端到端測試。
-
-![淺色液態玻璃 WebUI（模擬資料）](docs/liquid-glass-light.png)
-
 ## NTLM 相容性與安全範圍
 
 本版仍為 standalone Samba 與本機 passdb：帳密模式只允許 NTLMv2、禁用 LanMan。移除 ntlmhash ELF 後，Rust 使用 RustCrypto MD4 計算 Samba 所需 NT Hash；已有帳密資料不需轉換。NTLMv2 已被微軟棄用，收斂到 Rust 不會消除 NTLM 的協議風險。未改成 Guest 作為安全替代，也未宣稱支援 Kerberos。真正停用 NTLM 需先完成可用的替代認證部署。
 
 來源：[微軟 NTLM 淘汰方向](https://www.microsoft.com/en-us/msrc/blog/2024/12/mitigating-ntlm-relay-attacks-by-default)、[Samba ntlm auth](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#NTLMAUTH)、[NTOWF 格式](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/464551a8-9fc4-428e-b3d3-bc5bfb2e73a5)。
-
-## 來源與重建範圍
-
-Shell、WebUI HTML/CSS/JavaScript 均可直接修改。`build/` 保留既有 Samba 建置資料，尚未核對為本次 r30 二進位的精確對應來源。RC8 已以 `native/smbctl/src/storage.rs` 取代舊 `propwait`，源碼及離線 Rust 依賴均已收錄；RC2 已補齊替換後的 `smbnotify.dex` 源碼；不能把本倉庫稱為所有二進位皆可重建的完整源碼包。
-
-可用 Python 3 重新封裝現有模組（不重編二進位）：
-
-```powershell
-python scripts/package_module.py
-```
-
-輸出至 `dist/`，包含模組 ZIP 與 SHA256；ZIP 內 `sha256sum.txt` 校驗每個實際 runtime 檔案。`update.json` 提供模組管理器更新資訊。
-
 ## 功能
 
 - 內建 Samba 4.25.0 `smbd` 與四個 RPC 輔助程式
@@ -500,16 +409,6 @@ Samba 使用 `-Os -fPIE -ffunction-sections -fdata-sections -flto=thin`，並搭
 - `build-metadata.json`、`source-version.txt`、`SHA256SUMS.txt` 記錄實際建置版本與產物。
 - 發布對應原始碼請保留 `upstream-source/` 內精確版本來源、補丁、腳本及授權檔。
   日後直接執行會查最新版本，因此保留精確版本來源仍是重現歷史產物的重要依據。
-
-### 先前版本的已完成驗證（不代表 v0.3.16 已重測）
-
-本版六個 Samba ELF 的測試包含完整靜態檢查，以及在 Android 17 備用機上的 16 項客戶端、
-11 項伺服器／RPC 檢查：SMB2.02／SMB3.11、Guest／NTLMv2 帳密、錯誤密碼拒絕、中文檔名、
-4 MiB 隨機檔案上下載雜湊、空檔、重新命名、刪除、共享列舉、LSARPC 政策查詢、
-winreg 唯讀查詢及停止／啟動重連。報告只對所記錄 SHA256 的產物有效。
-
-MT 另完成跨手機匿名連線與文字檔讀取測試。尚未驗證所有 Android 版本、Kerberos／AD、
-強制 SMB 加密模式或大檔效能；成功編譯不等於新版已通過上述所有功能測試。
 
 ## 授權與第三方元件
 
