@@ -247,3 +247,25 @@ if overflow_new not in overflow_text:
     if overflow_old not in overflow_text:
         raise SystemExit('Expected Samba pointer overflow macro was not found')
     overflow_header.write_text(overflow_text.replace(overflow_old, overflow_new, 1), encoding='utf-8')
+
+# Request the optional robust-mutex backend only when TDB supports it.
+# Keep the normal file-lock backend and all diagnostic failure paths intact.
+for relative in ("source3/lib/gencache.c", "source3/lib/cleanupdb.c", "source3/profile/profile.c", "source3/utils/smb_prometheus_endpoint.c"):
+    target = Path(sys.argv[1]) / relative
+    original = target.read_text(encoding="utf-8")
+    marker = "(tdb_runtime_check_for_robust_mutexes() ? TDB_MUTEX_LOCKING : 0)"
+    if marker in original:
+        continue
+    if original.count("TDB_MUTEX_LOCKING") != 1:
+        raise SystemExit("Unexpected mutex request count: " + relative)
+    target.write_text(original.replace("TDB_MUTEX_LOCKING", marker), encoding="utf-8")
+
+# Suppress only the routine smbd startup banner. Keep -V and all diagnostics.
+server = Path(sys.argv[1]) / "source3/smbd/server.c"
+text = server.read_text(encoding="utf-8")
+old = '\tDBG_STARTUP_NOTICE("smbd version %s started.\\n%s\\n",\n\t\t\t   samba_version_string(),\n\t\t\t   samba_copyright_string());'
+new = '\t/* Android module: startup state is recorded by smbctl; omit routine banner. */'
+if new not in text:
+    if text.count(old) != 1:
+        raise SystemExit("Expected smbd startup banner was not found")
+    server.write_text(text.replace(old, new, 1), encoding="utf-8")

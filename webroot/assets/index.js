@@ -221,7 +221,7 @@
         const isRunning = !!j.running;
         const waitingLan = !!j.waitingNetwork;
         document.body.className = isRunning ? "running" : "stopped";
-        elements.statusText.textContent = isRunning ? t("running") : (waitingLan ? t("waitingLan") : t("stopped"));
+        elements.statusText.textContent = isRunning ? t("running") : (j.waitingStorage ? "等待使用者解鎖／儲存解密" : (waitingLan ? t("waitingLan") : t("stopped")));
         if (isRunning && j.pid) {
             elements.pidBadge.textContent = "PID: " + j.pid;
             elements.pidBadge.classList.remove('hidden');
@@ -249,11 +249,17 @@
     }
 
     async function refreshStatus() {
-        const res = await exec(`sh ${scriptTool} status`);
-        let j = {};
-        try { j = JSON.parse(res.s || "{}"); }
-        catch (e) { setLog(t("parseStatusFail") + "\n" + res.s + "\n" + (res.err || "")); return; }
-        renderStatus(j);
+        if (statusRefreshInProgress) return;
+        statusRefreshInProgress = true;
+        try {
+            const res = await exec(`sh ${scriptTool} status`);
+            if (res.e !== 0) throw new Error(res.err || res.s || t("parseStatusFail"));
+            const j = JSON.parse(res.s);
+            if (typeof j.running !== "boolean") throw new Error(t("parseStatusFail"));
+            renderStatus(j);
+        } catch (e) {
+            setLog(t("parseStatusFail") + "\n" + String(e));
+        } finally { statusRefreshInProgress = false; }
     }
 
     async function refreshConfig() {
@@ -366,6 +372,7 @@
     };
     $('btn-refresh-card').onclick = async () => {
         await exec(`sh ${scriptTool} refresh_card`);
+        await refreshAll();
         showToast(t("cardRefreshed"));
     };
     $('btn-force-stop').onclick = () => action("stop", t("stopping"));
@@ -441,8 +448,10 @@
 
     applyLang(lang);
     refreshAll().catch(e => setLog(t("initFail") + "\n" + e));
-    setInterval(() => {
-        if (document.visibilityState === "hidden") return;
-        if (!applyInProgress && pendingKeys.size === 0) refreshStatus();
-    }, 12000);
+    const refreshOnForeground = () => {
+        if (document.visibilityState !== "hidden" && !applyInProgress && pendingKeys.size === 0)
+            refreshStatus().catch(e => setLog(String(e)));
+    };
+    document.addEventListener("visibilitychange", refreshOnForeground);
+    window.addEventListener("focus", refreshOnForeground);
 })();

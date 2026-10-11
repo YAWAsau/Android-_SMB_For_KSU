@@ -2,13 +2,80 @@
 
 在已取得 Root 權限的 Android 裝置上執行 Samba `smbd`，並透過模組 WebUI 管理 SMB 分享、認證、協議、網路介面與日誌。
 
-目前版本：`v0.3.16-liquid-glass`
-版本代碼：`49`
+目前版本：`v0.3.17`
+版本代碼：`59`
 架構：`arm64-v8a`
 Samba：`4.25.0`
-本次 Samba 二進位沿用提供的 v0.3.15 包；ELF 標記為 Android API 28／NDK r30（16248370），本次沒有重新編譯。
+Samba 五個 ELF 已於 RC2 使用 NDK r30/API 28 重建，smbd 於 RC6 移除啟動版權橫幅；RC8 沿用上述產物。
 
 > 本模組會以 Root 身分執行 `smbd`。請只分享必要目錄，優先使用帳號密碼模式，並且不要把 TCP 445 直接暴露到網際網路。
+
+## v0.3.17 RC9：舊設定升級相容
+
+修復既有 config.conf 含 `MT_COMPAT_MODE=0` 時安裝失敗。此欄位以 0/1 純資料保留，保存其他設定時不遺失；不新增 MT 專用 Samba 行為。其他未知欄位仍回報錯誤。
+
+安裝器會顯示及記錄 selfcheck 的原始錯誤與退出碼；設定解析、pidfd、rtnetlink、inotify 錯誤不再全部誤報成核心能力不足。以回報者原始設定於隔離目錄重現 RC8 失敗、RC9 通過，保存前後全部設定值相同。16 個 Android 單元測試通過；尚待回報者手機確認完整安裝。
+
+## v0.3.17 RC8：單一自家 Rust ELF
+
+開機屬性等待直接收進 smbctl，以 Android property futex 事件等待，保留 120 秒一次性期限；不再啟動 getprop 或 propwait 子程序。另提供 `smbctl propwait equals NAME VALUE [TIMEOUT_MS]`，不建立模塊狀態。移除獨立 propwait ELF、舊 C 源碼及建置腳本。Samba/RPC 與通知 DEX 保持原產物。
+
+NDK r30/API 28，LOAD 與 RELRO 使用 16 KiB 對齊。Android 15 個單元測試、首次建立／值更新／逾時屬性等待，以及 Guest 上下載、帳密與錯誤密碼、崩潰恢復、事件去重等隔離測試通過。新等待實作仍需下次真實冷開機確認。
+
+## v0.3.17 RC7：單一 CE 屬性等待
+
+解鎖屬性存在後，用 prop_info 的 serial／wait 只等待該屬性，其他系統屬性不再喚醒 CE worker。只有屬性尚未建立時才等待全域屬性事件，並處理建立時的競態。非 CE 路徑完全不啟動屬性執行緒。分享使用者改變時 watcher 以 exec 更換自身監聽上下文，保留 PID 並消除舊執行緒；不引入計時輪詢。
+
+主力機通過 15 個單元測試、登入讀寫與事件恢復整合測試，以及 non-CE → CE → non-CE 切換驗證（執行緒數 1→2→1）。無關屬性事件不通知主 watcher。CPU 在真實事件發生時仍有必要用量，不保證所有情況永遠為零。
+
+## v0.3.17 RC6：精簡 smbd 啟動日誌
+
+源碼補丁只移除 smbd main() 的 DBG_STARTUP_NOTICE 版本／版權啟動宣告；保留 `smbd -V`、錯誤與警告日誌，以及源碼版權／授權。僅替換模塊的 smbd，其他服務端 helper 維持 RC2 產物。NDK r30/API 28、size/ThinLTO 重建；Android 隔離帳密／Guest／讀寫及事件恢復測試通過，新 log.smbd 為空，無效參數仍正確輸出診斷。同次開機既有日誌不追溯刪除。
+
+## v0.3.17 RC5：按開機輪替日誌
+
+以 `/proc/sys/kernel/random/boot_id` 辨識新開機，啟動服務前在 control.lock 保護下封存 runtime/log。當前日誌仍在 `/data/adb/smbdwebui/runtime/log/`；歷史在 `runtime/log-history/boot-<時間>-<上一輪boot_id>/`。首次升級將既有混合記錄標成 legacy。
+
+最多保留 3 份封存、封存合計上限 16 MiB，超限先淘汰最舊封存；當前日誌沿用原有各檔案大小輪替。通知 stderr、Samba 日誌與 auto_diagnostic.stamp 一起歸檔。同一次手機開機的服務重啟、網路重連、模塊更新均不清除當前日誌。新日誌首行記錄 BOOT_LOG_BEGIN 與 boot_id。
+
+15 個 Android 單元測試通過，包括同 boot 冪等、不同 boot 輪替、容量／數量上限、symlink 外部檔案保護、rename 中斷後恢復。輪替是啟動事件觸發，沒有背景清理輪詢。
+
+## v0.3.17 RC4：CE 解鎖事件
+
+參考 Mount_plus 的 user-state.sh：以 sys.user.<user>.ce_available 判斷 CE 解鎖，再檢查儲存根目錄可讀；屬性未提供時使用 am get-started-user-state，未知狀態不視為已解鎖。Rust 原生 property wait → eventfd 接入 watcher，搭配等待中的目錄 inotify，不設週期輪詢。適用 /sdcard、/storage/self/primary、/storage/emulated/<user>、/data/media/<user>、/data/user/<user>。一般重新鎖屏不會撤銷 CE 就緒。
+
+等待解鎖不耗盡啟動重試，WebUI 與模塊卡片顯示等待儲存狀態。主力機 Android 17 通過 12 個單元測試及隔離整合測試；閒置 5 秒 CPU ticks 152→152。沒有重開主力機，真實冷開機解鎖尚未驗證。
+
+## v0.3.17 RC3：開機分享路徑修復
+
+建立分享目錄改用 Samba 實際使用的 backing path，避免 `/sdcard` 開機連結尚未就緒時報 File exists，耗盡 watcher 重試。主力機 CPH2747 / Android 17 獨立 mount namespace 成功重現舊版失敗、新版啟動；未重開機驗證。新增錯誤訊息含實際路徑。
+
+## v0.3.17 RC2：mutex 與通知修復
+
+- Samba 4.25.0 的 gencache、cleanupdb、profile 與 Prometheus 路徑改成確認支援 robust mutex 後才要求；保留檔案鎖與實際錯誤診斷。五個服務端 ELF 使用 NDK r30/API 28 重建。
+- SMB 通知採掛載模塊的單次 system-context/BigText/Canvas 圖示方式，加入通知服務不可用、關機與 Binder 中斷處理，沒有輪詢或重試。
+- 新增共享資料夾＋網路節點圖示；使用 SMB 獨立通知頻道，修正 root/套件 UID 的頻道歸屬。
+- `native/notify/` 含通知完整源碼、建置腳本與競態測試。測試結果見 `docs/rc2-validation.md`。
+
+## v0.3.17 RC1：Rust 管理後端（歷史）
+
+- 五項收斂：狀態／JSON、純資料設定解析與原子保存、序列化啟停與程序身分、LAN 事件合併、程序持有的監聽 socket 驗證。
+- `native/smbctl/` 包含 Rust 完整源碼與 Cargo.lock；NDK r30／API 28、16 KiB ELF 對齊。
+- rtnetlink、inotify、pidfd 事件驅動；閒置沒有固定輪詢。啟動／退出期限、120ms 事件合併與失敗退避是一次性等待。
+- 移除舊 control.sh 管理函式、Shell watcher 與 netwatch ELF。Shell 僅保留模組入口、安裝升級、通知及診斷封裝。安裝器仍保留一次性的舊 watcher 清理，以支援升級。
+- WebUI 移除 12 秒輪詢；操作完成、返回前景與維護中心手動刷新時更新。頁面持續可見且沒有操作時，不會自動即時刷新外部狀態。
+- 核心須提供可用 pidfd_open/pidfd_send_signal、rtnetlink、inotify。一般需 Linux 5.3+ 或具備回移植；安裝前實測能力，不以 Android API 版本代替核心能力檢查。
+- Samba、RPC helpers、propwait、smbnotify.dex 不重編、不修改。獨立 ntlmhash ELF 已移除，NT Hash 計算收進 Rust，維持既有 NTLMv2 相容性；這不是認證協議安全升級。
+- RC 階段未推送候選更新；目前 v0.3.17 已轉為正式版。
+
+Rust 建置（Windows，先安裝 Rust 的 aarch64-linux-android target）：
+
+```powershell
+./native/build.ps1 -Ndk C:/path/to/android-ndk-r30
+python scripts/package_module.py
+```
+
+實機測試與限制見 [Rust 驗證紀錄](docs/rust-validation.md)。歷史 v0.3.16 的驗證範圍如下。
 
 ## v0.3.16 更新與驗證
 
@@ -20,9 +87,15 @@ Samba：`4.25.0`
 
 ![淺色液態玻璃 WebUI（模擬資料）](docs/liquid-glass-light.png)
 
+## NTLM 相容性與安全範圍
+
+本版仍為 standalone Samba 與本機 passdb：帳密模式只允許 NTLMv2、禁用 LanMan。移除 ntlmhash ELF 後，Rust 使用 RustCrypto MD4 計算 Samba 所需 NT Hash；已有帳密資料不需轉換。NTLMv2 已被微軟棄用，收斂到 Rust 不會消除 NTLM 的協議風險。未改成 Guest 作為安全替代，也未宣稱支援 Kerberos。真正停用 NTLM 需先完成可用的替代認證部署。
+
+來源：[微軟 NTLM 淘汰方向](https://www.microsoft.com/en-us/msrc/blog/2024/12/mitigating-ntlm-relay-attacks-by-default)、[Samba ntlm auth](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#NTLMAUTH)、[NTOWF 格式](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-nlmp/464551a8-9fc4-428e-b3d3-bc5bfb2e73a5)。
+
 ## 來源與重建範圍
 
-Shell、WebUI HTML/CSS/JavaScript 均可直接修改。`build/` 保留既有 Samba 建置資料（r29 歷史配方），尚未核對為本次 r30 二進位的精確對應來源。`netwatch`、`ntlmhash`、`propwait`、`smbnotify.dex` 的對應完整來源目前不在此倉庫；不能把本倉庫稱為所有二進位皆可重建的完整源碼包。
+Shell、WebUI HTML/CSS/JavaScript 均可直接修改。`build/` 保留既有 Samba 建置資料，尚未核對為本次 r30 二進位的精確對應來源。RC8 已以 `native/smbctl/src/storage.rs` 取代舊 `propwait`，源碼及離線 Rust 依賴均已收錄；RC2 已補齊替換後的 `smbnotify.dex` 源碼；不能把本倉庫稱為所有二進位皆可重建的完整源碼包。
 
 可用 Python 3 重新封裝現有模組（不重編二進位）：
 
@@ -261,7 +334,6 @@ save_restart
 set_password_hex
 log
 diagnose
-clean_stderr
 conf
 interface_key
 trusted_lan
@@ -316,51 +388,37 @@ su
 診斷內容包括：
 
 - 模組版本
-- Android 版本及核心資訊
-- `smbd`、`netwatch`、`propwait` 版本
+- `smbd` 與 Rust `smbctl` 版本
 - 目前設定，但不輸出密碼
-- passdb 中繼資料，但不輸出 NT Hash
 - 目前網路介面與 LAN 判定
-- 產生的 `smb.conf`
 - 最近的模組及 Samba 日誌
 
 回報問題時請一併提供診斷檔，並先確認其中沒有你不希望公開的裝置名稱、路徑、IP 位址或其他環境資訊。
 
-### 自動啟動診斷與重試
+### 啟動檢查與事件恢復
 
-- 檢查五個伺服器／RPC 程式是否存在且可執行。
-- 啟動期間檢查設定的監聽位址與埠，需連續五次就緒才回報成功；等待次數有上限。
-- 失敗時保存 `runtime/log/auto_failure.log`，上一份保存為 `auto_failure.previous.log`，各最多 64 KiB。
-- 相同失敗診斷在 60 秒內去重；同一網路／設定狀態下，自動嘗試最多三次且至少間隔 30 秒。
-- 自動重試只在後續相關網路事件到來時評估；網路或設定變更會重置重試限制，手動啟動不受此限制。
-- 停止服務或離開 LAN 時一併停止 RPC 輔助程序。
+- 啟動時確認必要伺服器與 RPC 程式可執行，並檢查設定埠的 LISTEN socket inode 確實由本模組 smbd 持有。
+- 啟動等待以 inotify 事件及一次性 5 秒期限驅動；停止透過 pidfd 發送訊號並等待程序退出。
+- 啟停、設定與認證操作共用 flock，設定採同目錄暫存檔、fsync 與 rename 保存。
+- watcher 接收 rtnetlink、inotify 和 master pidfd 退出事件。失敗最多安排三次一次性退避重試；短時間反覆崩潰另有 30 秒退避。
+- 異常紀錄寫入 module.log；Samba stdout/stderr 保留於 runtime/log。
+- 停止服務或離開 LAN 時一併停止本模組 RPC 程序。
 
-以上檢查不建立常駐定時巡檢。若服務靜默退出且沒有新的網路事件，watcher 不會立即察覺。
-Samba 活躍連線與自身協定計時器仍可能使用 CPU／網路，因此不宣稱整個服務完全零功耗。
+沒有常駐定時巡檢。Samba 本身的連線與協定計時器仍可能使用 CPU／網路，不宣稱整個服務零功耗。
 
 ## 運作架構
 
 ```text
-模組 WebUI
-  └─ control.sh
-      ├─ 產生 runtime/smb.conf
-      ├─ 啟動／停止 bin/smbd，檢查監聽就緒與失敗診斷
-      │   └─ samba-dcerpcd 按需啟動 rpcd_classic／rpcd_lsad／rpcd_winreg
-      ├─ 更新模組卡片
-      └─ 輸出狀態與診斷
+WebUI / action.sh -> control.sh -> bin/smbctl
+  設定解析、JSON、程序與 socket 查詢、原子保存、序列化啟停
 
-service.sh
-  ├─ bin/propwait 等待 sys.boot_completed
-  └─ 啟動 network_watch.sh
+service.sh -> smbctl boot（內建開機屬性事件等待）
+           -> smbctl watch（rtnetlink + inotify + pidfd）
+              LAN 與設定變更 / smbd 退出 -> 同一套 Rust 管理流程
 
-network_watch.sh
-  └─ bin/netwatch 監聽 NETLINK_ROUTE
-      ├─ LAN 出現：啟動或重新綁定 smbd
-      └─ LAN 消失：停止 smbd
-
-notify.sh
-  └─ app_process + bin/smbnotify.dex
-      └─ 顯示啟動、停止及錯誤通知
+network_watch.sh -> smbctl watch（升級相容入口）
+notify.sh -> app_process + smbnotify.dex
+smbd -> samba-dcerpcd -> rpcd_classic / rpcd_lsad / rpcd_winreg
 ```
 
 ## 模組檔案
@@ -370,8 +428,8 @@ META-INF/                         安裝入口
 action.sh                        模組管理器動作按鈕
 customize.sh                     安裝及熱更新流程
 service.sh                       開機服務入口
-control.sh                       主要控制與設定介面
-network_watch.sh                 LAN 狀態協調器
+control.sh                       Rust 命令列相容入口
+network_watch.sh                 Rust watcher 相容入口
 notify.sh                        Android 狀態通知入口
 diagnose.sh                      一鍵診斷
 uninstall.sh                     解除安裝清理
@@ -382,16 +440,15 @@ bin/samba-dcerpcd                RPC 服務調度
 bin/rpcd_classic                 共享列舉等傳統 RPC 服務
 bin/rpcd_lsad                    LSA／SAMR 等 RPC 服務
 bin/rpcd_winreg                  遠端登錄 RPC 服務
-bin/netwatch                     原生 rtnetlink watcher
-bin/propwait                     原生 Android property wait
-bin/ntlmhash                     NT Hash 建立工具
+bin/smbctl                       Rust 管理核心及事件監聽器
+bin/smbctl                      Rust 多功能核心（內建 property wait）
 bin/smbnotify.dex                獨立通知 Dex
 webroot/                         WebUI
 ```
 
 `sha256sum.txt` 供人工或發布流程核對檔案，目前安裝腳本不會強制執行整包雜湊驗證。
 
-## Samba 原始碼建置（既有 r29 歷史配方）
+## Samba 原始碼建置（既有配方）
 
 統一建置包使用同一套 Samba 原始碼、Android 補丁與建置腳本，涵蓋客戶端及伺服器。
 建置包不含可刷模組、模組底包或模組打包工具。完成後由維護者自行替換模組中的二進制。
@@ -426,7 +483,7 @@ webroot/                         WebUI
 `smbclient` 不能改名替代 `smbd`。模組伺服器端需搭配其餘五個程式，放入 `bin/` 並設定執行權限。
 RPC helper 的編譯路徑為 `/data/adb/modules/smbdwebui/bin`，預設日誌目錄為
 `/data/adb/smbdwebui/runtime/log`；更改模組 ID 或目錄時需一併處理這些路徑。
-`netwatch`、`propwait`、`ntlmhash`、`smbnotify.dex` 由各自原始碼與工具鏈維護，不屬於 Samba 建置目標。
+`smbctl` 使用 native/ 的 Rust 建置流程。屬性等待已收進 `smbctl`，不再有獨立 `propwait`；`smbnotify.dex` 由 `native/notify/build.ps1` 建置。兩者均不屬於 Samba 建置目標。
 
 Samba 使用 `-Os -fPIE -ffunction-sections -fdata-sections -flto=thin`，並搭配
 `--gc-sections --icf=safe`；GMP／Nettle／GnuTLS 靜態函式庫仍使用原來的 `-O2` 建置。

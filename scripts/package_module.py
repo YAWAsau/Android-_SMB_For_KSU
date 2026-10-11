@@ -8,7 +8,7 @@ files = [root / name for name in (
     'module.prop', 'action.sh', 'control.sh', 'customize.sh', 'diagnose.sh',
     'network_watch.sh', 'notify.sh', 'service.sh', 'uninstall.sh', 'README.md', 'LICENSE'
 )]
-for folder in ('bin', 'META-INF', 'webroot'):
+for folder in ('bin', 'META-INF', 'webroot', 'docs'):
     files.extend(p for p in (root / folder).rglob('*') if p.is_file())
 files.sort()
 hashes = ''.join(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' +

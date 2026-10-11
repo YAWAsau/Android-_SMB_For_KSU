@@ -1,3 +1,9 @@
 dist/
 __pycache__/
 *.pyc
+native/smbctl/target/
+
+native/notify/target/
+build/dist/
+
+native/propwait/target/

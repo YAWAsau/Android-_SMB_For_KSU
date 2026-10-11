@@ -60,7 +60,7 @@ with ThinLTO. No protocol or authentication feature is explicitly disabled by
 this profile. Both scopes only produce binaries; neither packages or flashes a module.
 Use `-BuildProfile standard` for the previous `-O2` configuration and
 `dist/android-arm64` output. The original module's non-Samba helper binaries
-(`netwatch`, `propwait`, `ntlmhash`) are preserved; they are not Samba build targets.
+are implemented by Rust `smbctl`; they are not Samba build targets.
 
 This build script targets ARM64 Android using API 28 and NDK r30 (30.0.16248370). NDK r30 outputs have not yet been built or runtime-tested. Historical r29 runtime verification was on the
 Xiaomi 13 spare phone running Android 17; other Android versions/root systems

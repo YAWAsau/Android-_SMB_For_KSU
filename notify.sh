@@ -55,6 +55,9 @@ notify_event() {
   out_one="$(clean_field "$out")"
   if [ "$rc" -eq 0 ]; then
     case "$out" in
+      *SMB_NOTIFY_SKIPPED*)
+        notify_log INFO NOTIFY_SKIPPED "type=$type dex=$out_one"
+        ;;
       *SMB_NOTIFY_SENT*)
         notify_log INFO NOTIFY_SENT "type=$type text=$text dex=$out_one"
         ;;

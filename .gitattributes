@@ -4,3 +4,4 @@ bin/** -text
 *.gz -text
 *.xz -text
 *.zip -text
+native/smbctl/vendor/** -text

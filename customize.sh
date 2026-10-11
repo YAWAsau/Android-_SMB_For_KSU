@@ -19,49 +19,34 @@ if [ "$ARCH" != "arm64" ]; then
   abort "! This build currently includes arm64-v8a smbd only"
 fi
 
-stop_old_network_watcher() {
-  local lock="$DATA_DIR/runtime/network_watch.lock" file pid cmd exe i
+log_install INFO EXTRACT "開始解壓模組檔案"
+ui_print "- Extracting module files"
+unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
+unzip -o "$ZIPFILE" 'service.sh' 'network_watch.sh' 'notify.sh' 'diagnose.sh' 'action.sh' 'uninstall.sh' 'control.sh' 'README.md' 'sha256sum.txt' -d "$MODPATH" >&2
+mkdir -p "$MODPATH/bin" "$MODPATH/webroot"
+unzip -o "$ZIPFILE" 'bin/*' 'webroot/*' -d "$MODPATH" >&2
+touch "$MODPATH/skip_mount"
 
-  [ -d "$lock" ] || return 0
-
-  for file in \
-    "$lock/netwatch_pid" \
-    "$lock/link_monitor_pid" \
-    "$lock/address_monitor_pid" \
-    "$lock/monitor_pid"; do
-    pid="$(cat "$file" 2>/dev/null)"
-    case "$pid" in ''|*[!0-9]*) continue ;; esac
-    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
-    exe="$(readlink "/proc/$pid/exe" 2>/dev/null)"
-    case "$cmd:$exe" in
-      *"/bin/netwatch"*|*"ip"*"monitor"*|*"/netwatch") kill "$pid" 2>/dev/null ;;
-    esac
-  done
-
-  pid="$(cat "$lock/pid" 2>/dev/null)"
-  case "$pid" in
-    ''|*[!0-9]*) ;;
-    *)
-      cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
-      case "$cmd" in
-        *network_watch.sh*)
-          kill "$pid" 2>/dev/null
-          i=0
-          while [ -d "/proc/$pid" ] && [ "$i" -lt 20 ]; do
-            sleep 0.05
-            i=$((i + 1))
-          done
-          [ -d "/proc/$pid" ] && kill -9 "$pid" 2>/dev/null
-          ;;
-      esac
-      ;;
-  esac
-
-  rm -rf "$lock" 2>/dev/null
-}
+chmod 755 "$MODPATH/bin/smbctl"
+if SELF_CHECK_OUTPUT="$("$MODPATH/bin/smbctl" selfcheck 2>&1)"; then
+  log_install INFO SELF_CHECK "$SELF_CHECK_OUTPUT"
+else
+  SELF_CHECK_RC=$?
+  log_install ERROR SELF_CHECK "exit=$SELF_CHECK_RC $SELF_CHECK_OUTPUT"
+  ui_print "! SMB backend self-check failed (exit=$SELF_CHECK_RC)"
+  while IFS= read -r SELF_CHECK_LINE; do
+    ui_print "! $SELF_CHECK_LINE"
+  done <<EOF
+$SELF_CHECK_OUTPUT
+EOF
+  abort "! See the specific self-check error above"
+fi
 
 log_install INFO WATCHER_STOP "停止更新前的舊 network watcher"
-stop_old_network_watcher
+if [ -x "$LIVE_MODPATH/bin/smbctl" ]; then
+  "$LIVE_MODPATH/bin/smbctl" watch-stop || abort "! Cannot stop Rust watcher"
+fi
+"$MODPATH/bin/smbctl" retire-legacy "$LIVE_MODPATH" || abort "! Cannot retire old watcher"
 
 # 記住更新前狀態。停止舊服務後會暫時把 ENABLED 寫成 0，
 # 所以另外保存原值，更新完成後再恢復。
@@ -75,20 +60,13 @@ fi
 case "$OLD_ENABLED" in 1) ;; *) OLD_ENABLED=0 ;; esac
 case "$OLD_AUTO_START" in 1) ;; *) OLD_AUTO_START=0 ;; esac
 
-if [ -x "$LIVE_MODPATH/control.sh" ] &&
-   sh "$LIVE_MODPATH/control.sh" is_running >/dev/null 2>&1; then
-  WAS_RUNNING=1
+if [ -x "$LIVE_MODPATH/control.sh" ]; then
+  if sh "$LIVE_MODPATH/control.sh" is_running >/dev/null 2>&1; then WAS_RUNNING=1; fi
   ui_print "- Stopping current smbd instance for live update"
-  sh "$LIVE_MODPATH/control.sh" stop >/dev/null 2>&1
+  sh "$LIVE_MODPATH/control.sh" stop >/dev/null 2>&1 || abort "! Cannot stop old SMB service"
 fi
 
-log_install INFO EXTRACT "開始解壓模組檔案"
-ui_print "- Extracting module files"
-unzip -o "$ZIPFILE" 'module.prop' -d "$MODPATH" >&2
-unzip -o "$ZIPFILE" 'service.sh' 'network_watch.sh' 'notify.sh' 'diagnose.sh' 'action.sh' 'uninstall.sh' 'control.sh' 'README.md' 'sha256sum.txt' -d "$MODPATH" >&2
-mkdir -p "$MODPATH/bin" "$MODPATH/webroot"
-unzip -o "$ZIPFILE" 'bin/*' 'webroot/*' -d "$MODPATH" >&2
-touch "$MODPATH/skip_mount"
+"$MODPATH/bin/smbctl" logs-prepare || abort "! Cannot prepare boot logs"
 
 log_install INFO CONFIG "準備設定目錄"
 ui_print "- Preparing config directory"
@@ -125,9 +103,7 @@ set_perm "$MODPATH/bin/samba-dcerpcd" 0 0 0755
 set_perm "$MODPATH/bin/rpcd_classic" 0 0 0755
 set_perm "$MODPATH/bin/rpcd_lsad" 0 0 0755
 set_perm "$MODPATH/bin/rpcd_winreg" 0 0 0755
-set_perm "$MODPATH/bin/ntlmhash" 0 0 0755
-set_perm "$MODPATH/bin/netwatch" 0 0 0755
-set_perm "$MODPATH/bin/propwait" 0 0 0755
+set_perm "$MODPATH/bin/smbctl" 0 0 0755
 set_perm "$MODPATH/control.sh" 0 0 0755
 set_perm "$MODPATH/action.sh" 0 0 0755
 set_perm "$MODPATH/service.sh" 0 0 0755
@@ -155,9 +131,7 @@ set_perm "$LIVE_MODPATH/bin/samba-dcerpcd" 0 0 0755
 set_perm "$LIVE_MODPATH/bin/rpcd_classic" 0 0 0755
 set_perm "$LIVE_MODPATH/bin/rpcd_lsad" 0 0 0755
 set_perm "$LIVE_MODPATH/bin/rpcd_winreg" 0 0 0755
-  set_perm "$LIVE_MODPATH/bin/ntlmhash" 0 0 0755
-  set_perm "$LIVE_MODPATH/bin/netwatch" 0 0 0755
-  set_perm "$LIVE_MODPATH/bin/propwait" 0 0 0755
+  set_perm "$LIVE_MODPATH/bin/smbctl" 0 0 0755
   set_perm "$LIVE_MODPATH/control.sh" 0 0 0755
   set_perm "$LIVE_MODPATH/action.sh" 0 0 0755
   set_perm "$LIVE_MODPATH/service.sh" 0 0 0755
@@ -176,9 +150,6 @@ if [ "$MODPATH" = "$LIVE_MODPATH" ]; then
 fi
 
 if [ -x "$ACTIVE_CONTROL" ]; then
-  sh "$ACTIVE_CONTROL" clean_stderr >/dev/null 2>&1 || true
-  log_install INFO LOG_CLEAN "已清理舊版 Samba 預設路徑警告"
-
   if [ "$WAS_RUNNING" = "1" ] ||
      [ "$OLD_ENABLED" = "1" ] ||
      [ "$OLD_AUTO_START" = "1" ]; then
@@ -202,22 +173,12 @@ fi
 ACTIVE_MODDIR="$LIVE_MODPATH"
 [ "$MODPATH" = "$LIVE_MODPATH" ] && ACTIVE_MODDIR="$MODPATH"
 
-if [ -x "$ACTIVE_MODDIR/bin/propwait" ]; then
-  PROPWAIT_VERSION="$("$ACTIVE_MODDIR/bin/propwait" --version 2>&1 | head -n 1)"
-  BOOT_VALUE="$(getprop sys.boot_completed 2>/dev/null)"
-  log_install INFO PROPWAIT_READY "$PROPWAIT_VERSION；boot_completed=$BOOT_VALUE"
-  ui_print "- Native propwait ready: $PROPWAIT_VERSION"
-  if [ -n "$BOOT_VALUE" ]; then
-    if "$ACTIVE_MODDIR/bin/propwait" equals sys.boot_completed "$BOOT_VALUE" >/dev/null 2>&1; then
-      log_install INFO PROPWAIT_SELFTEST "即時命中測試通過"
-    else
-      log_install WARN PROPWAIT_SELFTEST "即時命中測試失敗；開機時將使用 fallback"
-      ui_print "! propwait self-test failed; boot fallback remains available"
-    fi
-  fi
+# Remove the retired helper when installing directly over an existing module.
+rm -f "$MODPATH/bin/propwait" "$ACTIVE_MODDIR/bin/propwait"
+if "$ACTIVE_MODDIR/bin/smbctl" propwait equals sys.boot_completed "$(getprop sys.boot_completed)" 1000 >/dev/null 2>&1; then
+  log_install INFO PROPWAIT_SELFTEST "Rust property wait self-test passed"
 else
-  log_install ERROR PROPWAIT_MISSING "bin/propwait 缺失"
-  ui_print "! Native propwait missing; boot fallback will be used"
+  abort "Rust property wait self-test failed"
 fi
 
 rm -rf "$ACTIVE_MODDIR/logs" 2>/dev/null
@@ -225,14 +186,14 @@ ln -s "$DATA_DIR/runtime/log" "$ACTIVE_MODDIR/logs" 2>/dev/null
 log_install INFO LOG_LINK "建立 logs -> $DATA_DIR/runtime/log"
 
 if [ -x "$ACTIVE_MODDIR/network_watch.sh" ] &&
-   [ -x "$ACTIVE_MODDIR/bin/netwatch" ]; then
-  NETWATCH_VERSION="$("$ACTIVE_MODDIR/bin/netwatch" --version 2>&1 | head -n 1)"
-  log_install INFO WATCHER_START "啟動原生 rtnetlink watcher；$NETWATCH_VERSION"
-  ui_print "- Starting native netwatch"
+   [ -x "$ACTIVE_MODDIR/bin/smbctl" ]; then
+  SMBCTL_VERSION="$("$ACTIVE_MODDIR/bin/smbctl" --version 2>&1 | head -n 1)"
+  log_install INFO WATCHER_START "啟動Rust rtnetlink watcher；$SMBCTL_VERSION"
+  ui_print "- Starting Rust network manager"
   sh "$ACTIVE_MODDIR/network_watch.sh" --replace >/dev/null 2>&1 &
 else
-  log_install ERROR WATCHER_MISSING "network_watch.sh 或 bin/netwatch 缺失"
-  ui_print "! Native netwatch missing; automatic LAN recovery unavailable"
+  log_install ERROR WATCHER_MISSING "network_watch.sh 或 bin/smbctl 缺失"
+  ui_print "! Rust smbctl missing; automatic LAN recovery unavailable"
 fi
 
 rm -f "$DATA_DIR/runtime/cache/smbd_version"
